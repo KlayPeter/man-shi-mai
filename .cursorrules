@@ -1,0 +1,10 @@
+# AI Agent Rules & Instructions
+
+You MUST read and strictly adhere to the guidelines specified in the following file before performing any action, writing code, or committing changes:
+- Path: `ai/Agent.md`
+
+### Core Instructions:
+1. **Minimum Modification Principle**: Do not refactor or overwrite existing working code unless explicitly requested. Only make precise, minimal edits.
+2. **Coding Standards**: Write clean, readable code with robust error handling (`try-catch` blocks).
+3. **Commit Convention**: Follow the specifications in `ai/skills/git-commit/README.md`. Use English type prefixes combined with Chinese subject descriptions (e.g., `feat(server): 新增接口`).
+4. **Auto-updating Registry**: The pre-commit hook automatically runs `ai/skills/update-skills.js`. Ensure the auto-updated files are committed.
