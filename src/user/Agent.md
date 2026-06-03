@@ -6,7 +6,28 @@
   - `User` Schema (MongoDB): 包含 `username`、`password` (加密存储)、`email`、`role`、`createdAt` 等。
   - `Transaction` / `ConsumptionRecord`: 记录用户的积分充值、消费及各种面试消耗明细。
 
-## 2. 架构设计与代码流转 / Architectural Workflow
+## 2. 核心业务流程图 / Core Business Workflows (Mermaid)
+
+```mermaid
+graph TD
+    Client[客户端请求] --> Action{操作类别}
+    Action -- Register --> CheckExists{用户名/邮箱存在?}
+    CheckExists -- 是 --> Throw409[抛出 409 Conflict]
+    CheckExists -- 否 --> HashPass[Bcrypt Hash 密码加密]
+    HashPass --> SaveDB[保存用户至 MongoDB]
+    
+    Action -- Login --> FetchUser[读取用户信息]
+    FetchUser --> VerifyPass{Bcrypt Compare 密码?}
+    VerifyPass -- 否 --> Throw401[抛出 401 Unauthorized]
+    VerifyPass -- 是 --> SignJwt[生成 JWT Token]
+    SignJwt --> Response[返回 Token 和 UserInfo]
+    
+    Action -- Bills --> QueryDB[联合查询 Transactions/Consumption]
+    QueryDB --> FilterFields[脱敏密码字段]
+    FilterFields --> Response
+```
+
+## 3. 架构设计与代码流转 / Architectural Workflow
 - **控制器 (UserController)**:
   - 文件：`user.controller.ts`
   - 核心接口：
@@ -27,16 +48,16 @@
   5. 客户端使用 Token 请求 `info` 或 `consumption-records`。
   6. `UserController` 拦截器鉴权通过后，进入 Service 查询并返回成功结果。
 
-## 3. 技术依赖与第三方 API / Tech Stack & External APIs
+## 4. 技术依赖与第三方 API / Tech Stack & External APIs
 - **核心依赖**: `@nestjs/mongoose`, `@nestjs/jwt`, `bcryptjs`
 - **加密安全**: 密码不能明文落库，必须使用 `bcryptjs.hash()` 并在验证时使用 `bcryptjs.compare()`。
 
-## 4. 开发约束与边界处理 / Constraints & Guidelines
+## 5. 开发约束与边界处理 / Constraints & Guidelines
 - **防重名约束**: 注册时邮箱/用户名不能重复，服务中必须做 `findOne` 校验，查出冲突抛出 `ConflictException` (409)。
 - **敏感数据安全**: 查询并返回用户信息时，**严禁**返回密码字段（查询时使用 `select('-password')` 或在响应前剔除）。
 - **分页处理**: 消费明细查询接口必须做分页处理，防范百万级查询击穿内存。
 
-## 5. 本地调试与排查 / Debugging & Verification
+## 6. 本地调试与排查 / Debugging & Verification
 - **调试方式**:
   - 使用 Postman 直接向 `/user/register` 发送包含 `{ username, password, email }` 的 JSON。
   - 向 `/user/login` 发送账户密码，获取 Token 用于后续受保护接口测试。

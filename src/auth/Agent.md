@@ -5,7 +5,24 @@
 - **核心数据结构**:
   - `JwtPayload`: 包含 `userId`、`email`、`role` 等用户信息。
 
-## 2. 架构设计与代码流转 / Architectural Workflow
+## 2. 核心业务流程图 / Core Business Workflows (Mermaid)
+
+```mermaid
+graph TD
+    Request[客户端 HTTP 请求] --> JwtGuard[JwtAuthGuard 拦截]
+    JwtGuard --> CheckPublic{是否被 @Public() 标记?}
+    CheckPublic -- 是 --> Pass[放行并进入 Controller]
+    CheckPublic -- 否 --> DecodeJwt[调用 Passport JWT 策略解码]
+    DecodeJwt --> Valid{Token 是否有效且未过期?}
+    Valid -- 否 --> Throw401[抛出 401 Unauthorized]
+    Valid -- 是 --> AttachUser[将用户信息挂载至 req.user]
+    AttachUser --> RolesGuard[RolesGuard 角色验证]
+    RolesGuard --> CheckRoles{角色符合接口要求?}
+    CheckRoles -- 否 --> Throw403[抛出 403 Forbidden]
+    CheckRoles -- 是 --> Pass
+```
+
+## 3. 架构设计与代码流转 / Architectural Workflow
 - **认证守卫 (JwtAuthGuard)**:
   - 文件：`jwt-auth.guard.ts`
   - 核心逻辑：拦截请求并检验其 Header 中的 `Authorization: Bearer <token>`。支持通过 `@Public()` 装饰器跳过认证。
@@ -26,15 +43,15 @@
   5. 经过 `RolesGuard`（如果路由被标记了角色要求）验证角色。
   6. 通过验证 -> 执行 `Controller` 中的实际业务方法。
 
-## 3. 技术依赖与第三方 API / Tech Stack & External APIs
+## 4. 技术依赖与第三方 API / Tech Stack & External APIs
 - **核心依赖**: `@nestjs/passport`, `passport-jwt`, `passport`
 - **算法加密**: 对 JWT 采用 HS256 对称加密。
 
-## 4. 开发约束与边界处理 / Constraints & Guidelines
+## 5. 开发约束与边界处理 / Constraints & Guidelines
 - **安全性**: 任何新增敏感路由默认必须被 `JwtAuthGuard` 保护。如非绝对公开的 API，禁止使用 `@Public()` 装饰器。
 - **异常捕获**: 若 JWT 过期或无效，`JwtAuthGuard` 将抛出 `UnauthorizedException` (401 状态码)；角色不匹配时抛出 `ForbiddenException` (403 状态码)。
 
-## 5. 本地调试与排查 / Debugging & Verification
+## 6. 本地调试与排查 / Debugging & Verification
 - **调试方式**:
   - 在 Postman 中调用受保护路由时，必须在 Headers 中带上 `Authorization: Bearer <token>`。
 - **常见排查**:

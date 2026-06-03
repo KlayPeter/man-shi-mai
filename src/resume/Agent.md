@@ -5,7 +5,23 @@
 - **核心数据结构**:
   - `Resume` Schema (MongoDB): 包含 `userId` (关联用户), `resumeName` (简历名), `url` (OSS 中的文件链接), `uploadTime` (上传时间)。
 
-## 2. 架构设计与代码流转 / Architectural Workflow
+## 2. 核心业务流程图 / Core Business Workflows (Mermaid)
+
+```mermaid
+graph TD
+    Client[客户端请求] --> Action{操作类型}
+    Action -- Upload --> ExtractUserId[从 Token 获取 userId]
+    ExtractUserId --> CreateRecord[创建并保存 Resume 记录]
+    CreateRecord --> SaveDB[写入 MongoDB]
+    
+    Action -- Delete/Rename --> FetchRecord[联合查询 id + userId]
+    FetchRecord --> Exist{记录是否存在?}
+    Exist -- 否 --> Throw404[抛出 404 NotFound]
+    Exist -- 是 --> ModifyDB[删除/更新 MongoDB 记录]
+    ModifyDB --> Success[返回成功]
+```
+
+## 3. 架构设计与代码流转 / Architectural Workflow
 - **控制器 (ResumeController)**:
   - 文件：`resume.controller.ts`
   - 核心接口（全部路由均受 `JwtAuthGuard` 认证保护）：
@@ -23,17 +39,17 @@
   4. `ResumeService` 创建简历数据模型记录并保存落库。
   5. 进行简历列表查询时，按 `createdAt` 降序返回给前端。
 
-## 3. 技术依赖与第三方 API / Tech Stack & External APIs
+## 4. 技术依赖与第三方 API / Tech Stack & External APIs
 - **核心依赖**: `@nestjs/mongoose`, `mongoose`
 - **注意**: 本模块主要处理**元数据**。实际的简历文件文本抽取（PDF/Word 文本提取）并不在本项目下执行，而是由 `interview` 模块中的 `DocumentParserService` 负责。
 
-## 4. 开发约束与边界处理 / Constraints & Guidelines
+## 5. 开发约束与边界处理 / Constraints & Guidelines
 - **数据隔离**: 在进行任何删、改、查操作时，必须在 Query 中强制限制 `userId`！绝对禁止横向越权操作其他用户的简历记录（即：不能只通过 `resumeId` 去删改数据，必须同时校验 `userId`）。
 - **校验**: 简历名更新和上传时，简历名不能为空且字数不能过长。
 
-## 5. 本地调试与排查 / Debugging & Verification
+## 6. 本地调试与排查 / Debugging & Verification
 - **调试方式**:
   - 用 Postman 或 Swagger 挂载 Bearer Token。
   - 调用 `GET /resume/list`，检验是否能够准确检索出当前测试用户的专属简历列表。
 - **异常排查**:
-  - 如果返回 `404 简历不存在`：检查是否由于传入的 `resumeId` 与该 Token 解析出的 `userId` 不匹配（越权或ID有误）。
+  - 如果返回 `404 简历不存在`：检查是否由于传入 of `resumeId` 与该 Token 解析出的 `userId` 不匹配（越权或ID有误）。

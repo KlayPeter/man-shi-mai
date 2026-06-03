@@ -8,7 +8,27 @@
   3. 用户提交回答，AI 面试官根据前置的状态路由决策流转，继续生成追问或判题。
   4. 面试结束，AI 进行全局打分，生成多维度的评估报告。
 
-## 2. 架构设计与代码流转 / Architectural Workflow
+## 2. 核心业务流程图 / Core Business Workflows (Mermaid)
+
+```mermaid
+graph TD
+    Client[客户端请求 mock/start] --> ParseResume[DocumentParserService 解析简历文件]
+    ParseResume --> LoadJD[读取 JD 及配置]
+    LoadJD --> CompileGraph[InterviewAgentService 编译状态图]
+    CompileGraph --> RunGraph[运行 LangGraph 节点 introduction]
+    RunGraph --> SSE[通过 RxJS 发送 SSE 事件流]
+    
+    Client2[客户端请求 mock/answer] --> LoadState[读取 MongoDB 全局状态]
+    LoadState --> RouteJudge[evaluatePhaseTransition 裁判判定]
+    RouteJudge --> ReachedLimit{判定需要跳转或达到次数上限?}
+    ReachedLimit -- 是 --> StateMove[跳转至下一阶段并重置提问计数]
+    ReachedLimit -- 否 --> StateStay[留在当前阶段继续追问]
+    StateMove --> RunLLM[调用大模型生成相应提问]
+    StateStay --> RunLLM
+    RunLLM --> SSE
+```
+
+## 3. 架构设计与代码流转 / Architectural Workflow
 - **控制器 (InterviewController)**:
   - 文件：`interview.controller.ts`
   - 核心接口（大部分接口均受 `JwtAuthGuard` 保护）：
@@ -33,16 +53,16 @@
   4. 客户端发起 `mock/answer` 提交用户的回答。
   5. 重新载入历史对话，由 LLM 进行语义流转决策并生成追问，流式返回客户端。
 
-## 3. 技术依赖与第三方 API / Tech Stack & External APIs
+## 4. 技术依赖与第三方 API / Tech Stack & External APIs
 - **核心库**: `pdf-parse` (PDF解析), `mammoth` (Word解析), `@langchain/core`, `rxjs` (用于 SSE 进度流推送管理)
 - **大模型支持**: 结合 LangChain 进行模型调用，通过 `StructuredOutputParser` 进行结果 Schema 定义。
 
-## 4. 开发约束与边界处理 / Constraints & Guidelines
+## 5. 开发约束与边界处理 / Constraints & Guidelines
 - **SSE 流传输约束**: 在所有流式输出接口（如 `mock/start`、`mock/answer`）中，**必须**显式设定响应 Header (如 `Content-Type: text/event-stream; charset=utf-8`，`Cache-Control: no-cache`，禁用 Nginx 缓冲等)。
 - **订阅释放**: 在 SSE 请求中，客户端意外关闭连接（`req.on('close')`）时，**必须**主动取消 RxJS 的 `Subscription` 订阅，以防止发生服务器后台线程泄露。
-- **判分逻辑**: 最终判分必须覆盖 matchedSkills (匹配技能) 和 missingSkills (缺失技能)，确保前台雷达图能获取到完整的数据。
+- **判分逻辑**: 最终判分必须覆盖 matchedSkills (匹配技能点) 和 missingSkills (缺失技能点)，确保前台雷达图能获取到完整的数据。
 
-## 5. 本地调试与排查 / Debugging & Verification
+## 6. 本地调试与排查 / Debugging & Verification
 - **流式调试**: 建议使用 `curl` 命令行直接调试流式响应，例如：
   `curl -N -X POST -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -d '{"position":"前端"}' http://localhost:3000/interview/mock/start`
 - **日志关键字**: 
