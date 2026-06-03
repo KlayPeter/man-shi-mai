@@ -38,7 +38,7 @@ export class UserTransaction {
    * - 由 UserTransactionType 枚举约束
    * - 用于区分：充值 / 消费 / 退款 / 调账 / 系统赠送 等
    */
-  @Prop({ enum: UserTransactionType, required: true })
+  @Prop({ type: String, enum: UserTransactionType, required: true })
   type: UserTransactionType;
 
   /**

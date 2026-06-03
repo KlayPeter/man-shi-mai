@@ -20,7 +20,7 @@ export class PaymentRecord {
   @Prop({ required: true, unique: true })
   orderId: string; // 订单号（唯一）
 
-  @Prop({ required: true, enum: PaymentChannel })
+  @Prop({ required: true, type: String, enum: PaymentChannel })
   channel: PaymentChannel; // 支付渠道（支付宝或微信）
 
   @Prop({ required: true })
@@ -47,7 +47,11 @@ export class PaymentRecord {
   @Prop({ type: SchemaTypes.Mixed })
   notificationPayload?: Record<string, any>; // 支付通知的原始负载
 
-  @Prop({ enum: PaymentRecordStatus, default: PaymentRecordStatus.PENDING })
+  @Prop({
+    type: String,
+    enum: PaymentRecordStatus,
+    default: PaymentRecordStatus.PENDING,
+  })
   status: PaymentRecordStatus; // 订单状态
 
   @Prop()
