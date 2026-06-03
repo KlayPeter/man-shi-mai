@@ -1,8 +1,8 @@
-import { Injectable, Logger } from "@nestjs/common";
-import { PromptTemplate } from "@langchain/core/prompts";
-import { JsonOutputParser } from "@langchain/core/output_parsers";
-import { AIModelFactory } from "src/ai/services/ai-model.factory";
-import { RESUME_ANALYSIS_PROMPT } from "../prompts/resume-analysis.prompts";
+import { Injectable, Logger } from '@nestjs/common';
+import { PromptTemplate } from '@langchain/core/prompts';
+import { JsonOutputParser } from '@langchain/core/output_parsers';
+import { AIModelFactory } from 'src/ai/services/ai-model.factory';
+import { RESUME_ANALYSIS_PROMPT } from '../prompts/resume-analysis.prompts';
 
 /**
  * 简历分析服务
@@ -23,15 +23,15 @@ import { RESUME_ANALYSIS_PROMPT } from "../prompts/resume-analysis.prompts";
 export class ResumeAnalysisService {
   private readonly logger = new Logger(ResumeAnalysisService.name);
 
-  constructor(private readonly aiModelFactory: AIModelFactory) { }
-  
+  constructor(private readonly aiModelFactory: AIModelFactory) {}
+
   /**
    * 分析简历
    * @param resumeContent 简历内容
    * @param jobDescription 岗位要求
    * @return 分析结果Json对象
-  */
-  async analyze(resumeContent: string, jobDescription: string): Promise<any> { 
+   */
+  async analyze(resumeContent: string, jobDescription: string): Promise<any> {
     // 1. 创建prompt模板
     const prompt = PromptTemplate.fromTemplate(RESUME_ANALYSIS_PROMPT);
 
@@ -45,18 +45,18 @@ export class ResumeAnalysisService {
     const chain = prompt.pipe(model).pipe(parser);
 
     try {
-      this.logger.log("开始分析简历...");
+      this.logger.log('开始分析简历...');
       // 5. 调用链
       const result = await chain.invoke({
         resume_content: resumeContent,
-        job_description: jobDescription
-      })
+        job_description: jobDescription,
+      });
 
-      this.logger.log('简历分析完成')
-      return result
+      this.logger.log('简历分析完成');
+      return result;
     } catch (error) {
-      this.logger.error('简历分析失败', error)
-      throw error
+      this.logger.error('简历分析失败', error);
+      throw error;
     }
   }
 }

@@ -1,7 +1,7 @@
-import { IsEmail, isEmail, IsString, MinLength } from "class-validator";
-import { ApiProperty } from "@nestjs/swagger";
+import { IsEmail, isEmail, IsString, MinLength } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 
-export class RegisterDto{
+export class RegisterDto {
   @ApiProperty({
     description: '用户名，最少3位字符，用于显示和识别用户',
     example: 'zhangsan',

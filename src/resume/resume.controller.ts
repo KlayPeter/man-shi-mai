@@ -1,8 +1,19 @@
-import { Controller, Get, Post, Body, Request, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
 import { ResumeService } from './resume.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ResponseUtil } from '../common/utils/response.util';
-import { UploadResumeDto, DeleteResumeDto, UpdateResumeNameDto } from './dto/resume.dto';
+import {
+  UploadResumeDto,
+  DeleteResumeDto,
+  UpdateResumeNameDto,
+} from './dto/resume.dto';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 
 @ApiTags('简历管理')
@@ -15,7 +26,9 @@ export class ResumeController {
   @Get('getInterviewResumeList')
   @ApiOperation({ summary: '获取面试简历列表' })
   async getInterviewResumeList(@Request() req: any) {
-    const resumes = await this.resumeService.getInterviewResumeList(req.user.userId);
+    const resumes = await this.resumeService.getInterviewResumeList(
+      req.user.userId,
+    );
     return ResponseUtil.success(resumes, '获取成功');
   }
 
@@ -35,7 +48,10 @@ export class ResumeController {
 
   @Post('updateResumeName')
   @ApiOperation({ summary: '更新简历名称' })
-  async updateResumeName(@Request() req: any, @Body() dto: UpdateResumeNameDto) {
+  async updateResumeName(
+    @Request() req: any,
+    @Body() dto: UpdateResumeNameDto,
+  ) {
     const resume = await this.resumeService.updateResumeName(
       req.user.userId,
       dto.resumeId,

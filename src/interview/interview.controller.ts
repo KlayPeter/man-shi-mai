@@ -426,7 +426,6 @@ export class InterviewController {
     return ResponseUtil.success(interviews, '获取成功');
   }
 
-
   /**
    * 使用小麦币兑换套餐
    */
@@ -463,5 +462,3 @@ export class InterviewController {
     return { count };
   }
 }
-
-

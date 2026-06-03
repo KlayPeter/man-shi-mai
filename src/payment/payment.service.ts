@@ -736,7 +736,9 @@ export class PaymentService {
     }
 
     if (currentUser.hasUsedVirtualPayment) {
-      throw new ForbiddenException('您已使用过模拟支付功能，每个用户仅限使用一次');
+      throw new ForbiddenException(
+        '您已使用过模拟支付功能，每个用户仅限使用一次',
+      );
     }
 
     const paymentRecord = await this.paymentRecordModel
@@ -780,7 +782,10 @@ export class PaymentService {
       })
       .exec();
 
-    const updatedUser = await this.userModel.findById(user.userId).lean().exec();
+    const updatedUser = await this.userModel
+      .findById(user.userId)
+      .lean()
+      .exec();
 
     return {
       success: true,

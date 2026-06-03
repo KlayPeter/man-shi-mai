@@ -9,7 +9,10 @@ export class StsService {
     const accessKeyId = this.configService.get('OSS_ACCESS_KEY_ID');
     const accessKeySecret = this.configService.get('OSS_ACCESS_KEY_SECRET');
     console.log('STS Token - accessKeyId:', accessKeyId);
-    console.log('STS Token - accessKeySecret:', accessKeySecret ? '***' : 'undefined');
+    console.log(
+      'STS Token - accessKeySecret:',
+      accessKeySecret ? '***' : 'undefined',
+    );
 
     return {
       accessKeyId,

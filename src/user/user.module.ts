@@ -4,7 +4,10 @@ import { UserService } from './user.service';
 import { DatabaseModule } from 'src/database/database.module';
 import { MongooseModule } from '@nestjs/mongoose';
 import { User, UserSchema } from './schemas/user.schema';
-import { ConsumptionRecord, ConsumptionRecordSchema } from 'src/interview/schemas/consumption-record.schema';
+import {
+  ConsumptionRecord,
+  ConsumptionRecordSchema,
+} from 'src/interview/schemas/consumption-record.schema';
 import {
   UserConsumption,
   UserConsumptionSchema,
@@ -17,12 +20,13 @@ import {
 @Module({
   imports: [
     MongooseModule.forFeature([
-      {name:User.name,schema:UserSchema},
+      { name: User.name, schema: UserSchema },
       { name: ConsumptionRecord.name, schema: ConsumptionRecordSchema },
       { name: UserConsumption.name, schema: UserConsumptionSchema },
       { name: PaymentRecord.name, schema: PaymentRecordSchema },
-    ])
-    , DatabaseModule],
+    ]),
+    DatabaseModule,
+  ],
   controllers: [UserController],
   providers: [UserService],
   exports: [UserService],

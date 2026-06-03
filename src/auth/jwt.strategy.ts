@@ -12,8 +12,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   // 构造函数接收ConfigService实例，用于获取配置
   constructor(private readonly configService: ConfigService) {
     // 获取 JWT Secret（用于签名验证）
-    const jwtSecret =
-      configService.get<string>('JWT_SECRET') || 'mmx-secret';
+    const jwtSecret = configService.get<string>('JWT_SECRET') || 'mmx-secret';
 
     // 调用父类构造函数，传递JWT的配置选项
     super({

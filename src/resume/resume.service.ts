@@ -12,7 +12,10 @@ export class ResumeService {
   ) {}
 
   async getInterviewResumeList(userId: string) {
-    return await this.resumeModel.find({ userId }).sort({ createdAt: -1 }).lean();
+    return await this.resumeModel
+      .find({ userId })
+      .sort({ createdAt: -1 })
+      .lean();
   }
 
   async uploadResume(userId: string, dto: UploadResumeDto) {
@@ -28,7 +31,10 @@ export class ResumeService {
   }
 
   async deleteResume(userId: string, resumeId: string) {
-    const result = await this.resumeModel.findOneAndDelete({ _id: resumeId, userId });
+    const result = await this.resumeModel.findOneAndDelete({
+      _id: resumeId,
+      userId,
+    });
     if (!result) {
       throw new NotFoundException('简历不存在');
     }

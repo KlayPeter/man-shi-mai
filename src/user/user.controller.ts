@@ -35,7 +35,7 @@ export class UserController {
   @Post('login')
   @Public()
   @ApiOperation({ summary: '用户登录' })
-  async Login(@Body() LoginDto: LoginDto) { 
+  async Login(@Body() LoginDto: LoginDto) {
     const result = await this.userService.login(LoginDto);
     return ResponseUtil.success(result, '登录成功');
   }
@@ -62,10 +62,7 @@ export class UserController {
 
   @Post('update')
   @ApiOperation({ summary: '更新用户信息' })
-  async updateUser(
-    @Request() req: any,
-    @Body() updateUserDto: UpdateUserDto,
-  ) {
+  async updateUser(@Request() req: any, @Body() updateUserDto: UpdateUserDto) {
     const { userId } = req.user;
     const user = await this.userService.updateUser(userId, updateUserDto);
     return ResponseUtil.success(user, '更新成功');
@@ -87,7 +84,8 @@ export class UserController {
   @UseGuards(JwtAuthGuard)
   @ApiOperation({
     summary: '获取用户消费记录',
-    description:'获取用户所有的功能消费记录，包括简历押题、专项面试、综合面试等',
+    description:
+      '获取用户所有的功能消费记录，包括简历押题、专项面试、综合面试等',
   })
   async getConsumptionRecords(
     @Request() req: any,
@@ -95,11 +93,10 @@ export class UserController {
     @Query('limit') limit: number = 20,
   ) {
     const { userId } = req.user;
-    const result =
-      await this.userService.getUserConsumptionRecords(userId, {
-        skip,
-        limit,
-      });
+    const result = await this.userService.getUserConsumptionRecords(userId, {
+      skip,
+      limit,
+    });
     return ResponseUtil.success(result, '获取成功');
   }
 }

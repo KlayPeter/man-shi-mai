@@ -1,4 +1,4 @@
-﻿// src/interview/services/interview.service.ts
+// src/interview/services/interview.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SessionManager } from '../../ai/services/session.manager';
@@ -47,12 +47,14 @@ import {
 } from '../../user/schemas/user-transaction.schema';
 
 import { traceIdStorage } from '../../common/middleware/trace-id.middleware';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import * as ffmpeg from 'fluent-ffmpeg';
+import * as ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
+
 const AipSpeech = require('baidu-aip').speech;
-const ffmpeg = require('fluent-ffmpeg');
-const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
+const ffmpegPath = ffmpegInstaller.path;
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 
@@ -504,7 +506,7 @@ export class InterviewService {
         interviewTips: aiResult.interviewTips,
         // 元数据
         consumptionRecordId: recordId,
-        aiModel: 'deepseek-chat',
+        aiModel: this.configService.get('DEEPSEEK_MODEL') || 'deepseek-chat',
         promptVersion: dto.promptVersion || 'v2',
       });
 
@@ -520,7 +522,8 @@ export class InterviewService {
               resultId,
               questionCount: aiResult.questions.length,
             },
-            aiModel: 'deepseek-chat',
+            aiModel:
+              this.configService.get('DEEPSEEK_MODEL') || 'deepseek-chat',
             promptTokens: aiResult.usage?.promptTokens,
             completionTokens: aiResult.usage?.completionTokens,
             totalTokens: aiResult.usage?.totalTokens,
@@ -822,9 +825,8 @@ export class InterviewService {
     if (urlToDownload) {
       try {
         // 1. 从 URL 下载文件
-        const rawText = await this.documentParserService.parseDocumentFromUrl(
-          urlToDownload,
-        );
+        const rawText =
+          await this.documentParserService.parseDocumentFromUrl(urlToDownload);
 
         // 2. 清理文本（移除格式化符号等）
         const cleanedText = this.documentParserService.cleanText(rawText);
@@ -2674,7 +2676,10 @@ export class InterviewService {
   /**
    * 获取模拟面试详情
    */
-  async getMockInterviewHistory(userId: string, resultId: string): Promise<any> {
+  async getMockInterviewHistory(
+    userId: string,
+    resultId: string,
+  ): Promise<any> {
     const result = await this.aiInterviewResultModel.findOne({
       userId,
       resultId,
@@ -2694,7 +2699,9 @@ export class InterviewService {
         userId,
         status: { $in: ['in_progress', 'paused'] },
       })
-      .select('resultId company position interviewType status createdAt updatedAt')
+      .select(
+        'resultId company position interviewType status createdAt updatedAt',
+      )
       .sort({ updatedAt: -1 })
       .lean();
   }
@@ -2739,11 +2746,15 @@ export class InterviewService {
       if (result.err_no === 0) {
         return result.result[0];
       } else {
-        throw new BadRequestException(`语音识别失败: ${result.err_msg || '未知错误'}`);
+        throw new BadRequestException(
+          `语音识别失败: ${result.err_msg || '未知错误'}`,
+        );
       }
     } catch (error) {
       this.logger.error('语音识别错误:', error);
-      throw new BadRequestException(`语音识别失败: ${error.message || '未知错误'}`);
+      throw new BadRequestException(
+        `语音识别失败: ${error.message || '未知错误'}`,
+      );
     } finally {
       if (fs.existsSync(webmPath)) fs.unlinkSync(webmPath);
       if (fs.existsSync(wavPath)) fs.unlinkSync(wavPath);
@@ -2763,4 +2774,3 @@ export class InterviewService {
     return count;
   }
 }
-

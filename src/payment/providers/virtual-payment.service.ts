@@ -8,7 +8,7 @@ import { PaymentOrderPayload, PaymentChannel } from '../payment.types';
 @Injectable()
 export class VirtualPaymentService {
   private readonly logger = new Logger(VirtualPaymentService.name);
-  
+
   // 存储订单金额的内存映射（生产环境应该用数据库）
   private orderAmountMap: Map<string, number> = new Map();
 

@@ -1,6 +1,6 @@
-import { Injectable, Logger } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
-import { ChatDeepSeek } from "@langchain/deepseek"
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { ChatDeepSeek } from '@langchain/deepseek';
 
 /**
  * AI 模型工厂服务
@@ -31,11 +31,11 @@ import { ChatDeepSeek } from "@langchain/deepseek"
 
 @Injectable()
 export class AIModelFactory {
-  private readonly logger = new Logger(AIModelFactory.name)
+  private readonly logger = new Logger(AIModelFactory.name);
 
-  constructor(private readonly configService: ConfigService) { }
+  constructor(private readonly configService: ConfigService) {}
 
-    /**
+  /**
    * 创建默认的 AI 模型
    *
    * 这是最常用的模型初始化方法。
@@ -48,31 +48,34 @@ export class AIModelFactory {
    * - DEEPSEEK_MAX_TOKENS：最大 Token 数
    */
   createDefaultModel() {
-    const apiKey = this.configService.get<string>('DEEPSEEK_API_KEY')
-    if(!apiKey) {
-      throw new Error('DEEPSEEK_API_KEY 不存在')
+    const apiKey = this.configService.get<string>('DEEPSEEK_API_KEY');
+    if (!apiKey) {
+      throw new Error('DEEPSEEK_API_KEY 不存在');
     }
 
     // deepseek-reasoner是深度搜索
     // deepseek-chat是快速聊天
     return new ChatDeepSeek({
       apiKey: apiKey || '',
-      model: this.configService.get<string>('DEEPSEEK_MODEL') || 'deepseek-chat',
-      temperature: Number(this.configService.get<string>('DEEPSEEK_TEMPERATURE')) || 0.7,
-      maxTokens:Number(this.configService.get<string>('DEEPSEEK_MAX_TOKENS')) || 4000
-    })
+      model:
+        this.configService.get<string>('DEEPSEEK_MODEL') || 'deepseek-chat',
+      temperature:
+        Number(this.configService.get<string>('DEEPSEEK_TEMPERATURE')) || 0.7,
+      maxTokens:
+        Number(this.configService.get<string>('DEEPSEEK_MAX_TOKENS')) || 4000,
+    });
   }
 
   // 创建用于稳定输出的环境（评估场景）
 
   createStableModel(): ChatDeepSeek {
-    const baseModel = this.createDefaultModel()
+    const baseModel = this.createDefaultModel();
     return new ChatDeepSeek({
       apiKey: this.configService.get<string>('DEEPSEEK_API_KEY') || '',
       model: baseModel.model,
       temperature: 0.3,
-      maxTokens: 4000
-    })
+      maxTokens: 4000,
+    });
   }
 
   /**
@@ -82,12 +85,12 @@ export class AIModelFactory {
    * 这个方法创建一个 temperature 较高的模型。
    */
   createCreativeModel(): ChatDeepSeek {
-    const baseModel = this.createDefaultModel()
+    const baseModel = this.createDefaultModel();
     return new ChatDeepSeek({
       apiKey: this.configService.get<string>('DEEPSEEK_API_KEY') || '',
       model: baseModel.model,
       temperature: 0.9,
-      maxTokens: 4000
-    })
+      maxTokens: 4000,
+    });
   }
 }

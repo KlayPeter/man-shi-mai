@@ -1,7 +1,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import axios from 'axios';
 import * as pdf from 'pdf-parse';
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+
 const mammoth = require('mammoth');
 
 /**
@@ -152,7 +152,9 @@ export class DocumentParserService {
       }
 
       if (error.response?.status === 403) {
-        throw new BadRequestException('无法访问简历文件（OSS权限问题）。建议：直接粘贴简历文本内容，而不是上传文件');
+        throw new BadRequestException(
+          '无法访问简历文件（OSS权限问题）。建议：直接粘贴简历文本内容，而不是上传文件',
+        );
       }
 
       throw new BadRequestException(
