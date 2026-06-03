@@ -8,7 +8,30 @@
   3. 用户可以点击“兑换”或“充值”调起对应的模态框 (Modal) 执行交易。
   4. 支持在“充值记录”与“消费记录”两个页签进行切换，分页查询资金流向与消费明细。
 
-## 2. 页面结构与组件划分 / Layout & Components
+## 2. 页面渲染与交互流程图 / UI & Interaction Workflows (Mermaid)
+
+```mermaid
+graph TD
+    Mount[挂载个人中心页] --> FetchData[获取用户信息 + 简历列表]
+    FetchData --> RenderPage[渲染账户信息, 积分卡片, 简历列表, 消费账单]
+    
+    RenderPage --> UserAction{用户行为}
+    UserAction -- 兑换套餐 --> OpenRedeem[打开 RedeemServiceModal]
+    OpenRedeem --> CallRedeemAPI[调用兑换接口]
+    CallRedeemAPI --> RefreshData[拉取最新用户信息]
+    
+    UserAction -- 充值支付 --> OpenRecharge[打开 RechargeModal]
+    OpenRecharge --> CallRechargeAPI[创建支付单并调起支付]
+    
+    UserAction -- 上传简历 --> OpenUpload[打开 UploadResumeModal]
+    OpenUpload --> UploadSuccess[上传文件成功并调用同步接口]
+    UploadSuccess --> RefreshResumes[更新 Zustand userStore 中的 resumes 列表]
+    
+    UserAction -- 切换账单页签 --> FetchRecords[请求 /user/transactions 或 /user/consumption-records]
+    FetchRecords --> UpdateTable[更新消费与充值明细表格]
+```
+
+## 3. 页面结构与组件划分 / Layout & Components
 - **本页面为一个单独的 Client Component 文件**:
   - 文件：`page.tsx` (使用 `'use client'`)
   - 核心子组件 / 模态框：
@@ -20,7 +43,7 @@
     - `简历改名弹窗`: 输入新名称（限10字内）保存。
     - `简历 iframe 预览弹窗`: 全屏弹窗，内嵌 `iframe` 加载 PDF 文件预览链接。
 
-## 3. 状态管理与数据流 / State Management & Data Flow
+## 4. 状态管理与数据流 / State Management & Data Flow
 - **本地状态管理**:
   - `activeRecordTab` ('recharge' | 'consumption'): 控制消费/充值账单的页签显示。
   - `rechargeRecords` & `consumeRecords`: 保存拉取到的充值和消费记录明细数组。
@@ -33,12 +56,12 @@
 - **全局状态同步**:
   - 使用 `useUserStore` (`userStore`) 更新 `resumes` 状态，以便在整个应用的其他模块（如开始面试时）同步简历选择器。
 
-## 4. UI 风格与交互约束 / UI Styles & Interaction Constraints
+## 5. UI 风格与交互约束 / UI Styles & Interaction Constraints
 - **色彩排版**: 采用清新浅色调 `from-gray-50 via-white to-gray-50`。
 - **权益卡片**: 账户总览设计为微渐变立体卡片 (`from-primary-600 to-primary-700`)，以增强视觉质感。
-- **限制约束**: 限制简历上限 `MAX_RESUME_COUNT = 5`，超过 5 份时“上传简历”按钮禁用，更改为文本提示。
+- **限制约束**: 简历名额上限限制 `MAX_RESUME_COUNT = 5`，超过 5 份时“上传简历”按钮禁用，更改为文本提示。
 
-## 5. 调试与验证方法 / Debugging & Verification
+## 6. 调试与验证方法 / Debugging & Verification
 - **数据加载测试**:
   - 在 network 中验证 `transactions` 与 `consumption-records` 的接口返回格式，避免因不同后端字段包裹（如 `.records` 或 `.list`）导致前端列表空白。
 - **交互验证**:

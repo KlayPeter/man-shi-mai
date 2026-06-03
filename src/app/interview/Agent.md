@@ -6,7 +6,28 @@
   2. **面试实战 (interview/)**：与 AI 面试官进行流式实时会话，支持选择文本或语音录音作答，支持暂停、恢复或主动交卷。
   3. **打分报告 (report/)**：获取结构化的面试评估，使用图表展示技术匹配度、雷达能力模型、缺失的技能和改进建议。
 
-## 2. 页面结构与分工 / Module Directory Structure
+## 2. 页面渲染与交互流程图 / UI & Interaction Workflows (Mermaid)
+
+```mermaid
+graph TD
+    Start[访问 interview/start 面试配置页] --> Config[选择简历/填写岗位/JD]
+    Config --> Submit[扣减次数并跳转至 interview/ 工作区]
+    
+    Submit --> FetchSSE[发起 HTTP POST mock/start 请求并监听 Stream]
+    FetchSSE --> ReadSSE[逐字解析 ReadableStream 打字机效果渲染消息]
+    ReadSSE --> UserAction{用户行为}
+    
+    UserAction -- 文本/语音作答 --> SubmitAnswer[提交回答并发起 mock/answer Stream 监听]
+    SubmitAnswer --> ReadSSE
+    
+    UserAction -- 暂停/恢复 --> PauseResume[保存当前会话进度 / 唤醒会话]
+    
+    UserAction -- 主动交卷/面试完成 --> EndInterview[调用 mock/end 生成分析报告]
+    EndInterview --> Report[跳转至 interview/report/ 报告页]
+    Report --> RadarChart[渲染能力雷达图与匹配技能列表]
+```
+
+## 3. 页面结构与分工 / Module Directory Structure
 本模块包含三大核心路由页面：
 
 ### 2.1 面试配置页 (`src/app/interview/start/`)
@@ -29,7 +50,7 @@
   - 列出 matchedSkills (匹配技能点) 和 missingSkills (缺失技能点)。
   - 展示大模型提供的具体建议反馈、错题整理与正确示范答案。
 
-## 3. 状态管理与数据流 / State Management & Data Flow
+## 4. 状态管理与数据流 / State Management & Data Flow
 - **流式请求管理 (SSE)**:
   - 客户端通过 `fetch` 的 `ReadableStream` 逐字解析服务端返回的 EventStream 事件，将流式文本追加到最新的一条 AI 消息中，实现打字机效果。
 - **全局状态**:
@@ -39,12 +60,12 @@
   - `POST /dev-api/interview/mock/answer`: 用户回答提交流。
   - `GET /dev-api/interview/analysis/report/:resultId`: 请求分析报告。
 
-## 4. UI 风格与交互约束 / UI Styles & Interaction Constraints
+## 5. UI 风格与交互约束 / UI Styles & Interaction Constraints
 - **交互规范**: 对话泡泡有不同的气泡样式和背景（用户侧为浅绿，AI 侧为纯白或浅灰色）。
 - **语音控制**: 开启语音录制时展示波形微动效，防止用户重复录音。录音时应处理浏览器音频调用授权异常。
 - **SSE 防撕裂**: 流数据解析时，必须有加载占位符，且接收到的 JSON 必须安全解析防止 `JSON.parse` 格式错误引发白屏。
 
-## 5. 调试与验证方法 / Debugging & Verification
+## 6. 调试与验证方法 / Debugging & Verification
 - **模拟流数据调试**:
   - 若需要测试打字机渲染，可在本地调试时在 network 中调低网速，观察 `page.client.tsx` 中逐字累加的 `messages` 数组渲染是否抖动或导致页面滚动中断。
 - **异常捕获**:

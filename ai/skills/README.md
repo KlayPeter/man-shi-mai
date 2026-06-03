@@ -11,7 +11,7 @@
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | [git-commit/](git-commit/SKILL.md) | git-commit | `git-commit` | `1.0.0` | 🟢 开启中 (Active) | guidelines for formatting git commit messages. enforces Conventional Commits with English type prefixes and Chinese subject descriptions (e.g., feat(scope): 新增功能). use when making commits or staging files in the repository. |
 | [skill-builder-protocol/](skill-builder-protocol/SKILL.md) | skill-builder-protocol | `skill-builder-protocol` | `1.0.0` | 🟢 开启中 (Active) | create, critique, refactor, or improve chatgpt skills and claude-style skills as reusable agent operating manuals. use when the user asks to make a new skill, convert a workflow into a skill, write or review skill.md, decide whether a skill should be short or long, split instructions into references, design trigger descriptions, add decision trees, examples, failure handling, tools, scripts, assets, or quality checks for reliable repeatable agent behavior. |
-| [web-feature-doc/](web-feature-doc/SKILL.md) | web-feature-doc | `web-feature-doc` | `1.0.0` | 🟢 开启中 (Active) | standard protocol for creating and maintaining frontend Next.js feature-specific Agent.md files. Use this to understand frontend components, layouts, client/server routing, state management (Zustand), and styling. |
+| [web-feature-doc/](web-feature-doc/SKILL.md) | web-feature-doc | `web-feature-doc` | `1.0.0` | 🟢 开启中 (Active) | standard protocol for creating and maintaining frontend Next.js feature-specific Agent.md files. Requires documenting UI interactions and component hierarchy using Mermaid flowcharts. |
 <!-- SKILLS_LIST_END -->
 
 ---
