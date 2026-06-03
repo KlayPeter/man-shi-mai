@@ -17,6 +17,7 @@ let authToken = null;
 let testUserId = null;
 let testOrderId = null;
 let testResumeId = null;
+let testUserEmail = null;
 
 // 颜色输出
 const colors = {
@@ -99,8 +100,9 @@ const tests = {
     logInfo('测试用户注册...');
     try {
       const timestamp = Date.now();
+      testUserEmail = `test${timestamp}@666.com`;
       const response = await request('POST', '/user/register', {
-        email: `test${timestamp}@666.com`,
+        email: testUserEmail,
         username: `testuser${timestamp}`,
         password: '123456',
       });
@@ -124,7 +126,7 @@ const tests = {
     logInfo('测试用户登录...');
     try {
       const response = await request('POST', '/user/login', {
-        email: 'test@666.com',
+        email: testUserEmail || 'test@666.com',
         password: '123456',
       });
       
