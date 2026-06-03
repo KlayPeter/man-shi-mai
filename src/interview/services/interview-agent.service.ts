@@ -1,11 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { StateGraph, START, END, Annotation } from '@langchain/langgraph';
-import { AIMessage, HumanMessage, BaseMessage } from '@langchain/core/messages';
+import { AIMessage, HumanMessage, BaseMessage, SystemMessage, ToolMessage } from '@langchain/core/messages';
 import { PromptTemplate } from '@langchain/core/prompts';
 import { StructuredOutputParser } from '@langchain/core/output_parsers';
 import { AIModelFactory } from '../../ai/services/ai-model.factory';
 import { PhaseTransitionSchema, PhaseTransition } from '../dto/transition.schema';
+import { createCodeSandboxTool } from '../tools/code-sandbox.tool';
 
 /**
  * 定义 LangGraph 的状态 Annotation
@@ -139,6 +140,7 @@ export class InterviewAgentService {
     workflow.addNode('behavioral_test', (state: any) => this.handleBehavioralTest(state, onChunkToken));
     workflow.addNode('candidate_qa', (state: any) => this.handleCandidateQA(state, onChunkToken));
     workflow.addNode('closing', (state: any) => this.handleClosing(state, onChunkToken));
+    workflow.addNode('execute_tool', (state: any) => this.handleExecuteTool(state, onChunkToken));
 
     // 2. 设置入口和动态阶段路由
     workflow.addConditionalEdges(START, (state: any) => {
@@ -153,7 +155,15 @@ export class InterviewAgentService {
     });
 
     workflow.addConditionalEdges('tech_assessment', (state: any) => {
+      const lastMsg = state.messages[state.messages.length - 1];
+      if (lastMsg instanceof AIMessage && lastMsg.tool_calls && lastMsg.tool_calls.length > 0) {
+        return 'execute_tool';
+      }
       return state.shouldTransition ? 'behavioral_test' : END;
+    });
+
+    workflow.addConditionalEdges('execute_tool', (state: any) => {
+      return state.currentPhase || 'tech_assessment';
     });
 
     workflow.addConditionalEdges('behavioral_test', (state: any) => {
@@ -207,17 +217,17 @@ export class InterviewAgentService {
     }
 
     // 生成下一个深挖问题
-    const systemPrompt = `你现在是专业的面试官。当前面试处于第一阶段：【简历与项目深挖阶段】。
+    const systemPrompt = `你现在是专业且极其犀利、严谨的面试官。当前面试处于第一阶段：【简历与项目深挖阶段】。
 候选人姓名: ${state.candidateName}
 求职岗位: ${state.positionName}
 岗位描述(JD): ${state.jd}
 候选人简历内容: ${state.resumeContent}
 
-请根据聊天历史记录，针对候选人简历中提到的某一个核心项目或者技术细节进行追问。
+请根据聊天历史记录，针对候选人上一次回答中的技术细节或架构决策进行极为深入的硬核追问。
 要求：
-1. 追问要细致，直击痛点，验证简历真实度。
-2. 每次只提一个问题。
-3. 保持专业、严谨但有礼貌的面试官语气。`;
+1. 严禁接受泛泛而谈的场面话或纯概念性的八股包装。如果候选人回避具体职责或推给“DBA/中间件团队”，你必须追问其本人的具体落地细节（例如具体个人贡献、核心代码逻辑、具体参数配置、异常重试与数据对账流程）。
+2. 刨根问底，对关键指标（如吞吐量、响应时间、命中率、数据延迟等）索取合理的数据支撑与推导依据。
+3. 每次只提一个问题，保持专业、冷峻、逻辑严密、直击痛点的面试官语气。`;
 
     const promptTemplate = PromptTemplate.fromTemplate(`{systemPrompt}\n\n当前聊天历史:\n{history}\n\n生成下一个追问：`);
     const historyText = this.formatHistoryForLLM(state.messages);
@@ -249,10 +259,19 @@ export class InterviewAgentService {
 
   private async handleTechAssessment(state: any, onChunkToken: (t: string) => void): Promise<any> {
     const reachedLimit = state.questionsAskedCount >= state.maxQuestionsPerPhase;
-    // 如果还没提问过，不要进行转移判断
-    const transitionData = state.questionsAskedCount > 0
+    
+    // 检查候选人最新回答中是否包含代码
+    const lastHumanMsg = [...state.messages].reverse().find(m => m._getType() === 'human')?.content?.toString() || '';
+    const hasCode = lastHumanMsg.includes('```') || 
+                    /function\b/.test(lastHumanMsg) || 
+                    /\bconst\b/.test(lastHumanMsg) || 
+                    /\blet\b/.test(lastHumanMsg) || 
+                    /\bclass\b/.test(lastHumanMsg);
+
+    // 如果有代码，或者还没提问过，不要进行转移判断，确保沙箱执行及追问能够进行
+    const transitionData = (state.questionsAskedCount > 0 && !hasCode)
       ? await this.evaluatePhaseTransition(state)
-      : { suggestTransition: false, discoveredSkills: [] as string[], reason: '刚进入阶段' };
+      : { suggestTransition: false, discoveredSkills: [] as string[], reason: '刚进入阶段或有代码待运行验证' };
 
     if (transitionData.suggestTransition || reachedLimit) {
       this.logger.log(`[tech_assessment] -> 跳转。原因: ${transitionData.reason || '已达到最大提问次数'}`);
@@ -270,31 +289,36 @@ export class InterviewAgentService {
 
 请根据聊天历史，对候选人的技术底子、算法能力或系统设计进行考察。
 要求：
-1. 提出一道符合岗位要求的算法题、场景设计题或硬核技术原理题。
+1. 必须提出一道具体的 JavaScript 算法手写代码题（如实现 LRU 缓存、Top K 元素或简单数据结构），要求候选人写出完整的 JavaScript 代码实现。
 2. 每次只提一个问题。
-3. 保持专业、严谨的面试官语气。`;
+3. 如果候选人提交了 JavaScript 代码，你必须调用 run_javascript_code 工具执行该代码，评估其正确性和执行结果，并根据执行结果（如报错或正确输出）对候选人进行针对性的追问或点评。
+4. 保持专业、严谨的面试官语气。`;
 
-    const promptTemplate = PromptTemplate.fromTemplate(`{systemPrompt}\n\n当前聊天历史:\n{history}\n\n生成下一个问题：`);
-    const historyText = this.formatHistoryForLLM(state.messages);
-    const formattedPrompt = await promptTemplate.format({
-      systemPrompt,
-      history: historyText
-    });
-
+    const messages = [new SystemMessage(systemPrompt), ...state.messages];
     const model = this.aiModelFactory.createDefaultModel();
-    const stream = await model.stream(formattedPrompt);
-    let fullText = '';
+    const sandboxTool = createCodeSandboxTool();
+    const modelWithTools = model.bindTools([sandboxTool]);
 
-    for await (const chunk of stream) {
-      const content = chunk.content?.toString() || '';
-      if (content) {
-        fullText += content;
-        onChunkToken(content);
-      }
+    this.logger.log(`🤖 调用大模型评估技术考核，消息数: ${messages.length}`);
+    const response = await modelWithTools.invoke(messages);
+
+    if (response.tool_calls && response.tool_calls.length > 0) {
+      return {
+        messages: [response],
+        shouldTransition: false,
+        currentPhase: 'tech_assessment'
+      };
+    }
+
+    const fullText = response.content?.toString() || '';
+    const chunkSize = 5;
+    for (let i = 0; i < fullText.length; i += chunkSize) {
+      onChunkToken(fullText.slice(i, i + chunkSize));
+      await new Promise(r => setTimeout(r, 20));
     }
 
     return {
-      messages: [new AIMessage(fullText)],
+      messages: [response],
       questionsAskedCount: state.questionsAskedCount + 1,
       shouldTransition: false,
       currentPhase: 'tech_assessment'
@@ -322,7 +346,8 @@ export class InterviewAgentService {
 请考察候选人的团队协作、沟通流畅度、抗压经历及解决冲突的能力（参考 STAR 原则）。
 要求：
 1. 每次只提一个行为面试问题。
-2. 保持专业、温和但深入的面试官语气。`;
+2. 保持专业、温和但深入的面试官语气。
+${state.questionsAskedCount === 0 ? '3. 【重要】由于刚从技术/算法阶段过渡到行为面试，请在问题最开始加一句自然的过渡句，例如：“刚才你提到了……，那正好我有一个关于跨团队协作与沟通的分歧处理问题……”' : ''}`;
 
     const promptTemplate = PromptTemplate.fromTemplate(`{systemPrompt}\n\n当前聊天历史:\n{history}\n\n生成下一个问题：`);
     const historyText = this.formatHistoryForLLM(state.messages);
@@ -354,9 +379,14 @@ export class InterviewAgentService {
   private async handleCandidateQA(state: any, onChunkToken: (t: string) => void): Promise<any> {
     // 如果候选人已经没有问题，准备结束
     const lastUserMessage = [...state.messages].reverse().find(m => m._getType() === 'human')?.content?.toString() || '';
-    // 如果还没提问过，不要立即判断结束，必须给用户一次提问机会
+    
+    // 如果候选人明确表示没有问题，或者提问次数达到限制，则准备结束
     const wantsToEnd = state.questionsAskedCount > 0 && 
-      (lastUserMessage.includes('没有问题') || lastUserMessage.includes('没了') || state.questionsAskedCount >= 2);
+      (lastUserMessage.includes('没有问题') || 
+       lastUserMessage.includes('没了') || 
+       lastUserMessage.includes('没有其他') ||
+       lastUserMessage.includes('谢谢') && !lastUserMessage.includes('？') && !lastUserMessage.includes('吗') ||
+       state.questionsAskedCount >= 2);
 
     if (wantsToEnd) {
       return {
@@ -365,15 +395,52 @@ export class InterviewAgentService {
       };
     }
 
-    const text = `好的，我对你的考察基本结束了。请问你对我们公司或者这个岗位有什么想了解的吗？`;
-    const chunkSize = 5;
-    for (let i = 0; i < text.length; i += chunkSize) {
-      onChunkToken(text.slice(i, i + chunkSize));
-      await new Promise(r => setTimeout(r, 20));
+    if (state.questionsAskedCount === 0) {
+      const text = `好的，我对你的考察基本结束了。请问你对我们公司或者这个岗位有什么想了解的吗？`;
+      const chunkSize = 5;
+      for (let i = 0; i < text.length; i += chunkSize) {
+        onChunkToken(text.slice(i, i + chunkSize));
+        await new Promise(r => setTimeout(r, 20));
+      }
+
+      return {
+        messages: [new AIMessage(text)],
+        questionsAskedCount: 1,
+        shouldTransition: false,
+        currentPhase: 'candidate_qa'
+      };
+    }
+
+    // 动态生成回答
+    const systemPrompt = `你现在是专业的面试官。当前面试处于最后阶段：【候选人提问/问答阶段】。
+求职岗位: ${state.positionName}
+公司: 大迈科技
+岗位描述(JD): ${state.jd}
+候选人简历内容: ${state.resumeContent}
+
+请根据候选人的提问，客观、专业、耐心地解答候选人的问题。解答完毕后，询问候选人是否还有其他想了解的问题。`;
+
+    const promptTemplate = PromptTemplate.fromTemplate(`{systemPrompt}\n\n当前聊天历史:\n{history}\n\n生成对候选人提问的回答：`);
+    const historyText = this.formatHistoryForLLM(state.messages);
+    const formattedPrompt = await promptTemplate.format({
+      systemPrompt,
+      history: historyText
+    });
+
+    const model = this.aiModelFactory.createDefaultModel();
+    const stream = await model.stream(formattedPrompt);
+    let fullText = '';
+
+    for await (const chunk of stream) {
+      const content = chunk.content?.toString() || '';
+      if (content) {
+        fullText += content;
+        onChunkToken(content);
+      }
     }
 
     return {
-      messages: [new AIMessage(text)],
+      messages: [new AIMessage(fullText)],
       questionsAskedCount: state.questionsAskedCount + 1,
       shouldTransition: false,
       currentPhase: 'candidate_qa'
@@ -393,6 +460,36 @@ export class InterviewAgentService {
       messages: [new AIMessage(text)],
       interviewEnded: true,
       currentPhase: 'closing'
+    };
+  }
+
+  private async handleExecuteTool(state: any, onChunkToken: (t: string) => void): Promise<any> {
+    const lastMsg = state.messages[state.messages.length - 1];
+    if (!(lastMsg instanceof AIMessage) || !lastMsg.tool_calls || lastMsg.tool_calls.length === 0) {
+      return {};
+    }
+
+    const toolCalls = lastMsg.tool_calls;
+    const toolMessages: BaseMessage[] = [];
+    const sandboxTool = createCodeSandboxTool();
+
+    for (const toolCall of toolCalls) {
+      if (toolCall.name === 'run_javascript_code') {
+        this.logger.log(`🤖 执行代码沙箱工具，代码长度: ${toolCall.args.code?.length}`);
+        const result = await sandboxTool.invoke(toolCall.args as any);
+        if (typeof result === 'string') {
+          toolMessages.push(new ToolMessage({
+            content: result,
+            tool_call_id: toolCall.id || ''
+          }));
+        } else {
+          toolMessages.push(result as any);
+        }
+      }
+    }
+
+    return {
+      messages: toolMessages
     };
   }
 
