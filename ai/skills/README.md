@@ -10,6 +10,7 @@
 | 技能目录 / Directory | 技能名称 / Name | 标识 / ID | 版本 / Version | 状态 / Status | 核心作用 / Short Description |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | [git-commit/](git-commit/README.md) | Git Commit Formatting (Git 提交规范) | `git-commit` | `1.0.0` | 🟢 开启中 (Active) | 确保每次提交均遵循 Conventional Commits (约定式提交) 规范。对中文进行友好支持，清晰表述改动意图，不因中文而破坏格式。 |
+| [server-feature-doc/](server-feature-doc/SKILL.md) | server-feature-doc | `server-feature-doc` | `1.0.0` | 🟢 开启中 (Active) | standard protocol for creating and maintaining backend NestJS feature-specific Agent.md files. Use this to understand the server structure, including Controllers, Services, DTOs, schemas, and database mappings. |
 | [skill-builder-protocol/](skill-builder-protocol/SKILL.md) | skill-builder-protocol | `skill-builder-protocol` | `1.0.0` | 🟢 开启中 (Active) | create, critique, refactor, or improve chatgpt skills and claude-style skills as reusable agent operating manuals. use when the user asks to make a new skill, convert a workflow into a skill, write or review skill.md, decide whether a skill should be short or long, split instructions into references, design trigger descriptions, add decision trees, examples, failure handling, tools, scripts, assets, or quality checks for reliable repeatable agent behavior. |
 <!-- SKILLS_LIST_END -->
 
