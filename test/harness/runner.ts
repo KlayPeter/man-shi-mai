@@ -66,9 +66,9 @@ async function runMockInterviewSession(profile: CandidateProfile) {
   // 更新下一轮迭代的状态
   const finalOpeningOutput = result.value;
   if (finalOpeningOutput && finalOpeningOutput.metadata) {
-    currentPhase = finalOpeningOutput.metadata.currentPhase;
-    questionsAskedCount = finalOpeningOutput.metadata.questionsAskedCount;
-    extractedSkills = finalOpeningOutput.metadata.extractedSkills;
+    currentPhase = finalOpeningOutput.metadata.currentPhase ?? currentPhase;
+    questionsAskedCount = finalOpeningOutput.metadata.questionsAskedCount ?? questionsAskedCount;
+    extractedSkills = finalOpeningOutput.metadata.extractedSkills ?? extractedSkills;
   }
 
   // 4. 对局循环（限制最多 8 轮交互）
@@ -109,9 +109,9 @@ async function runMockInterviewSession(profile: CandidateProfile) {
     // 提取状态数据
     const agentOutput = genResult.value;
     if (agentOutput && agentOutput.metadata) {
-      currentPhase = agentOutput.metadata.currentPhase;
-      questionsAskedCount = agentOutput.metadata.questionsAskedCount;
-      extractedSkills = agentOutput.metadata.extractedSkills;
+      currentPhase = agentOutput.metadata.currentPhase ?? currentPhase;
+      questionsAskedCount = agentOutput.metadata.questionsAskedCount ?? questionsAskedCount;
+      extractedSkills = agentOutput.metadata.extractedSkills ?? extractedSkills;
     }
 
     // 检查是否结束

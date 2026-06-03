@@ -140,25 +140,28 @@ export class InterviewAgentService {
     workflow.addNode('candidate_qa', (state: any) => this.handleCandidateQA(state, onChunkToken));
     workflow.addNode('closing', (state: any) => this.handleClosing(state, onChunkToken));
 
-    // 2. 设置入口和基础转移连线
-    workflow.addEdge(START, 'introduction');
-    workflow.addEdge('introduction', 'resume_digging');
+    // 2. 设置入口和动态阶段路由
+    workflow.addConditionalEdges(START, (state: any) => {
+      return state.currentPhase || 'introduction';
+    });
 
-    // 3. 配置条件转移边逻辑
+    workflow.addEdge('introduction', END);
+
+    // 3. 配置条件转移边逻辑：如果需要跳转则流转到下一阶段，否则进入 END 挂起等待下一轮对话
     workflow.addConditionalEdges('resume_digging', (state: any) => {
-      return state.shouldTransition ? 'tech_assessment' : 'resume_digging';
+      return state.shouldTransition ? 'tech_assessment' : END;
     });
 
     workflow.addConditionalEdges('tech_assessment', (state: any) => {
-      return state.shouldTransition ? 'behavioral_test' : 'tech_assessment';
+      return state.shouldTransition ? 'behavioral_test' : END;
     });
 
     workflow.addConditionalEdges('behavioral_test', (state: any) => {
-      return state.shouldTransition ? 'candidate_qa' : 'behavioral_test';
+      return state.shouldTransition ? 'candidate_qa' : END;
     });
 
     workflow.addConditionalEdges('candidate_qa', (state: any) => {
-      return state.shouldTransition ? 'closing' : 'candidate_qa';
+      return state.shouldTransition ? 'closing' : END;
     });
 
     workflow.addEdge('closing', END);
@@ -189,7 +192,10 @@ export class InterviewAgentService {
 
   private async handleResumeDigging(state: any, onChunkToken: (t: string) => void): Promise<any> {
     const reachedLimit = state.questionsAskedCount >= state.maxQuestionsPerPhase;
-    const transitionData = await this.evaluatePhaseTransition(state);
+    // 如果还没提问过，不要进行转移判断
+    const transitionData = state.questionsAskedCount > 0
+      ? await this.evaluatePhaseTransition(state)
+      : { suggestTransition: false, discoveredSkills: [] as string[], reason: '刚进入阶段' };
 
     if (transitionData.suggestTransition || reachedLimit) {
       this.logger.log(`[resume_digging] -> 跳转。原因: ${transitionData.reason || '已达到最大提问次数'}`);
@@ -236,13 +242,17 @@ export class InterviewAgentService {
       messages: [new AIMessage(fullText)],
       questionsAskedCount: state.questionsAskedCount + 1,
       shouldTransition: false,
-      extractedSkills: transitionData.discoveredSkills
+      extractedSkills: transitionData.discoveredSkills,
+      currentPhase: 'resume_digging'
     };
   }
 
   private async handleTechAssessment(state: any, onChunkToken: (t: string) => void): Promise<any> {
     const reachedLimit = state.questionsAskedCount >= state.maxQuestionsPerPhase;
-    const transitionData = await this.evaluatePhaseTransition(state);
+    // 如果还没提问过，不要进行转移判断
+    const transitionData = state.questionsAskedCount > 0
+      ? await this.evaluatePhaseTransition(state)
+      : { suggestTransition: false, discoveredSkills: [] as string[], reason: '刚进入阶段' };
 
     if (transitionData.suggestTransition || reachedLimit) {
       this.logger.log(`[tech_assessment] -> 跳转。原因: ${transitionData.reason || '已达到最大提问次数'}`);
@@ -286,13 +296,17 @@ export class InterviewAgentService {
     return {
       messages: [new AIMessage(fullText)],
       questionsAskedCount: state.questionsAskedCount + 1,
-      shouldTransition: false
+      shouldTransition: false,
+      currentPhase: 'tech_assessment'
     };
   }
 
   private async handleBehavioralTest(state: any, onChunkToken: (t: string) => void): Promise<any> {
     const reachedLimit = state.questionsAskedCount >= state.maxQuestionsPerPhase;
-    const transitionData = await this.evaluatePhaseTransition(state);
+    // 如果还没提问过，不要进行转移判断
+    const transitionData = state.questionsAskedCount > 0
+      ? await this.evaluatePhaseTransition(state)
+      : { suggestTransition: false, discoveredSkills: [] as string[], reason: '刚进入阶段' };
 
     if (transitionData.suggestTransition || reachedLimit) {
       return {
@@ -332,14 +346,17 @@ export class InterviewAgentService {
     return {
       messages: [new AIMessage(fullText)],
       questionsAskedCount: state.questionsAskedCount + 1,
-      shouldTransition: false
+      shouldTransition: false,
+      currentPhase: 'behavioral_test'
     };
   }
 
   private async handleCandidateQA(state: any, onChunkToken: (t: string) => void): Promise<any> {
     // 如果候选人已经没有问题，准备结束
     const lastUserMessage = [...state.messages].reverse().find(m => m._getType() === 'human')?.content?.toString() || '';
-    const wantsToEnd = lastUserMessage.includes('没有问题') || lastUserMessage.includes('没了') || state.questionsAskedCount >= 2;
+    // 如果还没提问过，不要立即判断结束，必须给用户一次提问机会
+    const wantsToEnd = state.questionsAskedCount > 0 && 
+      (lastUserMessage.includes('没有问题') || lastUserMessage.includes('没了') || state.questionsAskedCount >= 2);
 
     if (wantsToEnd) {
       return {
@@ -358,7 +375,8 @@ export class InterviewAgentService {
     return {
       messages: [new AIMessage(text)],
       questionsAskedCount: state.questionsAskedCount + 1,
-      shouldTransition: false
+      shouldTransition: false,
+      currentPhase: 'candidate_qa'
     };
   }
 
@@ -373,7 +391,8 @@ export class InterviewAgentService {
 
     return {
       messages: [new AIMessage(text)],
-      interviewEnded: true
+      interviewEnded: true,
+      currentPhase: 'closing'
     };
   }
 
@@ -448,7 +467,17 @@ export class InterviewAgentService {
     currentPhase?: any; // 从 session 传入的当前阶段
     questionsAskedCount?: number;
     extractedSkills?: string[];
-  }): AsyncGenerator<string, { question: string; shouldEnd: boolean; standardAnswer?: string; reasoning?: string }> {
+  }): AsyncGenerator<string, {
+    question: string;
+    shouldEnd: boolean;
+    standardAnswer?: string;
+    reasoning?: string;
+    metadata?: {
+      currentPhase?: any;
+      questionsAskedCount?: number;
+      extractedSkills?: string[];
+    };
+  }> {
     const queue = new AsyncQueue<string>();
 
     // 1. 构建 LangGraph 状态输入
