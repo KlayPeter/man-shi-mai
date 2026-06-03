@@ -1,11 +1,12 @@
+---
+name: git-commit
+description: guidelines for formatting git commit messages. enforces Conventional Commits with English type prefixes and Chinese subject descriptions (e.g., feat(scope): 新增功能). use when making commits or staging files in the repository.
+---
+
 # Skill: Git Commit Formatting (Git 提交规范)
 
-## 元数据 / Metadata
-- **名称 (Name)**: Git Commit Formatting (Git 提交规范)
-- **标识 (ID)**: git-commit
-- **版本 (Version)**: 1.0.0
-- **适用场景 (Context)**: 开发者或 AI 智能体在提交代码修改时，规范提交信息 (Commit Message)
-- **核心目的 (Goal)**: 确保每次提交均遵循 Conventional Commits (约定式提交) 规范。对中文进行友好支持，清晰表述改动意图，不因中文而破坏格式。
+## 核心原则 / Core Principle
+确保每次提交均遵循 Conventional Commits (约定式提交) 规范。对中文进行友好支持，清晰表述改动意图，不因中文而破坏格式。
 
 ---
 
