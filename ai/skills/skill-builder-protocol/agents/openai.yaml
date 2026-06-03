@@ -1,0 +1,5 @@
+interface:
+  display_name: "Skill Builder Protocol"
+  short_description: "Create reliable, reusable Skills from workflows."
+  icon: "🧩"
+  color: "#5B6EE1"
