@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { InterviewController } from './interview.controller';
 import { InterviewService } from './services/interview.service';
 import { InterviewAIService } from './services/interview-ai.service';
+import { InterviewAgentService } from './services/interview-agent.service';
 import { DocumentParserService } from './services/document-parser.service';
 import { ConfigModule } from '@nestjs/config';
 import { AIModule } from '../ai/ai.module';
@@ -44,10 +45,11 @@ import {
   providers: [
     InterviewService,
     InterviewAIService,
+    InterviewAgentService,
     DocumentParserService,
     ResumeAnalysisService,
     ConversationContinuationService,
   ],
-  exports: [InterviewService, InterviewAIService, DocumentParserService],
+  exports: [InterviewService, InterviewAIService, InterviewAgentService, DocumentParserService],
 })
 export class InterviewModule {}

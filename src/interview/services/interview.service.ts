@@ -24,6 +24,7 @@ import {
 } from '../schemas/interview-quiz-result.schema';
 import { DocumentParserService } from './document-parser.service';
 import { InterviewAIService } from './interview-ai.service';
+import { InterviewAgentService } from './interview-agent.service';
 import { AIInterviewType } from '../schemas/ai-interview-result.schema';
 import {
   StartMockInterviewDto,
@@ -118,6 +119,11 @@ interface InterviewSession {
 
   // 状态
   isActive: boolean; // 是否活跃（用于判断是否已结束）
+
+  // Agent 状态变量
+  currentPhase?: 'introduction' | 'resume_digging' | 'tech_assessment' | 'behavioral_test' | 'candidate_qa' | 'closing';
+  questionsAskedCount?: number;
+  extractedSkills?: string[];
 }
 
 /**
@@ -147,6 +153,7 @@ export class InterviewService {
     private conversationContinuationService: ConversationContinuationService,
     private documentParserService: DocumentParserService,
     private aiService: InterviewAIService,
+    private agentService: InterviewAgentService,
     @InjectModel(ConsumptionRecord.name)
     private consumptionRecordModel: Model<ConsumptionRecordDocument>,
     @InjectModel(ResumeQuizResult.name)
@@ -1331,7 +1338,7 @@ export class InterviewService {
         reasoning?: string;
       };
 
-      const questionGenerator = this.aiService.generateInterviewQuestionStream({
+      const questionGenerator = this.agentService.generateInterviewQuestionStream({
         interviewType:
           session.interviewType === MockInterviewType.SPECIAL
             ? 'special'
@@ -1346,6 +1353,9 @@ export class InterviewService {
         })),
         elapsedMinutes,
         targetDuration: session.targetDuration,
+        currentPhase: session.currentPhase,
+        questionsAskedCount: session.questionsAskedCount,
+        extractedSkills: session.extractedSkills,
       });
 
       // 逐块推送问题内容，并捕获返回值
@@ -1449,8 +1459,14 @@ export class InterviewService {
           });
         }
 
-        // Generator 完成，result.value 现在是返回值
+        // Generator 完成，result.value 现在是返回值，包含 metadata
         aiResponse = result.value;
+        if (aiResponse && (aiResponse as any).metadata) {
+          const meta = (aiResponse as any).metadata;
+          session.currentPhase = meta.currentPhase;
+          session.questionsAskedCount = meta.questionsAskedCount;
+          session.extractedSkills = meta.extractedSkills;
+        }
 
         // 如果没有检测到标准答案标记（可能AI没有生成），使用完整内容
         if (!hasStandardAnswer) {
