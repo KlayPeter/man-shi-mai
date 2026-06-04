@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Put,
+  Param,
   Body,
   Request,
   UseGuards,
@@ -13,6 +15,8 @@ import {
   UploadResumeDto,
   DeleteResumeDto,
   UpdateResumeNameDto,
+  CreateEmptyResumeDto,
+  UpdateResumeContentDto,
 } from './dto/resume.dto';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 
@@ -58,5 +62,34 @@ export class ResumeController {
       dto.resumeName,
     );
     return ResponseUtil.success(resume, '更新成功');
+  }
+
+  @Get('detail/:id')
+  @ApiOperation({ summary: '获取简历完整详情' })
+  async getResumeDetail(@Request() req: any, @Param('id') id: string) {
+    const resume = await this.resumeService.getResumeDetail(req.user.userId, id);
+    return ResponseUtil.success(resume, '获取成功');
+  }
+
+  @Post('create-empty')
+  @ApiOperation({ summary: '创建空白结构化简历' })
+  async createEmptyResume(@Request() req: any, @Body() dto: CreateEmptyResumeDto) {
+    const resume = await this.resumeService.createEmptyResume(req.user.userId, dto);
+    return ResponseUtil.success(resume, '创建成功');
+  }
+
+  @Put('content/:id')
+  @ApiOperation({ summary: '保存/更新在线简历内容' })
+  async updateResumeContent(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() dto: UpdateResumeContentDto,
+  ) {
+    const resume = await this.resumeService.updateResumeContent(
+      req.user.userId,
+      id,
+      dto,
+    );
+    return ResponseUtil.success(resume, '保存成功');
   }
 }

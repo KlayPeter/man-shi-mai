@@ -48,3 +48,30 @@ export class UpdateResumeNameDto {
   })
   resumeName: string;
 }
+
+export class CreateEmptyResumeDto {
+  @ApiProperty({
+    description: '简历名称',
+    example: '张三的在线简历',
+  })
+  @IsString()
+  @IsNotEmpty()
+  resumeName: string;
+}
+
+export class UpdateResumeContentDto {
+  @ApiProperty({
+    description: '简历编辑器结构化数据',
+    example: { basics: { name: '张三' }, education: [] },
+  })
+  @IsNotEmpty()
+  editorData: any;
+
+  @ApiProperty({
+    description: '简历的纯文本快照，供面试和 AI 消费',
+    example: '姓名：张三\n工作经历：...',
+  })
+  @IsString()
+  @IsNotEmpty()
+  plainTextSnapshot: string;
+}

@@ -824,8 +824,14 @@ export class InterviewService {
         throw new BadRequestException('无权访问该简历');
       }
 
+      // 如果有纯文本快照，优先使用
+      if (resume.plainTextSnapshot) {
+        this.logger.log(`✅ 命中结构化简历纯文本快照，长度=${resume.plainTextSnapshot.length}字符`);
+        return resume.plainTextSnapshot;
+      }
+
       urlToDownload = resume.url;
-      this.logger.log(`✅ 简历查询成功，URL=${urlToDownload}`);
+      this.logger.log(`✅ 未发现纯文本快照，回退至文件解析，URL=${urlToDownload}`);
     }
 
     // 优先级 3：如果有 URL（来自 resumeId 或 resumeURL），下载并解析
