@@ -80,6 +80,16 @@ export default function AppHeader() {
               开启 AI 服务
             </Link>
             <Link
+              href="/resume"
+              className={`transition-colors ${
+                isActive('/resume')
+                  ? 'text-neutral-900 font-bold'
+                  : 'hover:text-neutral-900'
+              }`}
+            >
+              简历中心
+            </Link>
+            <Link
               href="/history"
               className={`transition-colors ${
                 isActive('/history')
@@ -157,6 +167,17 @@ export default function AppHeader() {
                 </button>
                 {showUserMenu && (
                   <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1">
+                    <Link
+                      href="/resume"
+                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      onClick={() => setShowUserMenu(false)}
+                    >
+                      <Icon
+                        name="i-heroicons-document-text"
+                        className="w-4 h-4 inline mr-2"
+                      />
+                      简历中心
+                    </Link>
                     <Link
                       href="/profile"
                       className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
