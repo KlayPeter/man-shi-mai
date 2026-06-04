@@ -6,7 +6,7 @@ export async function POST(request: Request) {
   const path = searchParams.get('path') || ''
   const body = await request.text()
 
-  const backendUrl = `${process.env.BACKEND_API_URL || 'http://localhost:3000'}${path}`
+  const backendUrl = `${process.env.BACKEND_API_URL || 'http://localhost:3333'}${path}`
   const token = request.headers.get('authorization')
 
   const headers: Record<string, string> = {

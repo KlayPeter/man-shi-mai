@@ -30,7 +30,7 @@ const nextConfig = {
     return [
       {
         source: '/dev-api/:path*',
-        destination: `${process.env.BACKEND_API_URL || 'http://localhost:3000'}/:path*`,
+        destination: `${process.env.BACKEND_API_URL || 'http://localhost:3333'}/:path*`,
       },
     ]
   },

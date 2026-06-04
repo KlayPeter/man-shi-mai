@@ -19,7 +19,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'BACKEND_API_URL=http://localhost:3000 pnpm run build && BACKEND_API_URL=http://localhost:3000 pnpm run start -p 8001',
+    command: 'BACKEND_API_URL=http://localhost:3333 pnpm run build && BACKEND_API_URL=http://localhost:3333 pnpm run start -p 8001',
     url: 'http://localhost:8001',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000, // 2 minutes
