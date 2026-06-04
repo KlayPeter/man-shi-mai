@@ -13,7 +13,7 @@ const FILE_SIZE_LIMIT = 5 * 1024 * 1024
 interface Props {
   open: boolean
   onClose: () => void
-  onUploaded: () => void
+  onUploaded: (resumeId?: string) => void
 }
 
 export default function UploadResumeModal({ open, onClose, onUploaded }: Props) {
@@ -64,13 +64,13 @@ export default function UploadResumeModal({ open, onClose, onUploaded }: Props) 
       const fileName = `user-resumes/${userId}/${Date.now()}-${selectedFile.name}`
       const ossRes = await ossClient.put(fileName, selectedFile)
 
-      await request.post('/resume/uploadResume', {
+      const res = await request.post('/resume/uploadResume', {
         url: ossRes.url,
         resumeName: selectedFile.name,
         uploadTime: new Date().toISOString()
       })
       toast({ title: '上传成功', color: 'green' })
-      onUploaded()
+      onUploaded(res.data?._id)
       onClose()
     } catch (e: any) {
       toast({ title: '上传失败', description: e.message || '请稍后重试', color: 'red' })

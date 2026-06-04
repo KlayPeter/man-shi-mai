@@ -1,7 +1,8 @@
-﻿'use client'
+'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
 import Image from 'next/image'
+import { useRouter } from 'next/navigation'
 import Icon from '@/components/ui/Icon'
 import Button from '@/components/ui/Button'
 import { useUserStore } from '@/stores/userStore'
@@ -29,11 +30,7 @@ export default function ProfilePage() {
   const [rechargeRecords, setRechargeRecords] = useState<any[]>([])
   const [consumeRecords, setConsumeRecords] = useState<any[]>([])
   const [recordsLoading, setRecordsLoading] = useState(false)
-  const [previewResume, setPreviewResume] = useState<any>(null)
-  const [deleteConfirm, setDeleteConfirm] = useState<any>(null)
-  const [editNameModal, setEditNameModal] = useState<{ resume: any; index: number } | null>(null)
-  const [editNameValue, setEditNameValue] = useState('')
-  const [editNameLoading, setEditNameLoading] = useState(false)
+  const router = useRouter()
 
   const fetchRecords = useCallback(async (tab: 'recharge' | 'consumption') => {
     setRecordsLoading(true)
@@ -66,31 +63,7 @@ export default function ProfilePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchRecords(activeRecordTab) }, [activeRecordTab])
 
-  const handleDeleteResume = async () => {
-    if (!deleteConfirm) return
-    try {
-      await request.post('/resume/deleteResume', { resumeId: deleteConfirm.resume.resumeId })
-      const newResumes = [...userStore.resumes]
-      newResumes.splice(deleteConfirm.index, 1)
-      userStore.updateResumes(newResumes)
-    } catch { /* ignore */ }
-    finally { setDeleteConfirm(null) }
-  }
 
-  const handleConfirmEditName = async () => {
-    if (!editNameModal) return
-    const value = editNameValue.trim()
-    if (!value || value.length > 10) return
-    setEditNameLoading(true)
-    try {
-      await request.post('/resume/updateResumeName', { resumeId: editNameModal.resume.resumeId, resumeName: value })
-      const newResumes = [...userStore.resumes]
-      newResumes[editNameModal.index] = { ...newResumes[editNameModal.index], resumeName: value }
-      userStore.updateResumes(newResumes)
-      setEditNameModal(null)
-    } catch { /* ignore */ }
-    finally { setEditNameLoading(false) }
-  }
 
   const stats = [
     { label: '面试押题', value: (userStore.userInfo as any)?.resumeRemainingCount || 0, icon: 'i-heroicons-document-text' },
@@ -187,59 +160,33 @@ export default function ProfilePage() {
                 <div className="flex items-center justify-between mb-6">
                   <div className="flex items-center gap-3">
                     <Icon name="i-heroicons-folder" className="w-5 h-5 text-primary-600" />
-                    <h2 className="text-base font-semibold text-gray-900">我的简历</h2>
+                    <h2 className="text-base font-semibold text-gray-900">简历中心</h2>
                     <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
                       {userStore.resumes.length}/{MAX_RESUME_COUNT}
                     </span>
                   </div>
-                  {userStore.canAddResume ? (
-                    <Button color="primary" onClick={() => setShowUploadResume(true)}>
-                      <Icon name="i-heroicons-plus" className="w-4 h-4 mr-1" />
-                      上传简历
-                    </Button>
-                  ) : (
-                    <span className="text-sm text-gray-500">最多上传 {MAX_RESUME_COUNT} 份简历</span>
-                  )}
+                  <Button color="primary" onClick={() => router.push('/resume')}>
+                    前往简历中心
+                    <Icon name="i-heroicons-arrow-right" className="w-4 h-4 ml-1" />
+                  </Button>
                 </div>
-                {userStore.resumes.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {userStore.resumes.map((resume: any, index: number) => (
-                      <div
-                        key={resume.resumeId || resume.id || index}
-                        className="group relative flex items-center gap-3 px-4 py-3 bg-white border border-gray-200 rounded-xl hover:border-primary-300 hover:shadow-md transition-all cursor-pointer"
-                        onClick={() => setPreviewResume(resume)}
-                      >
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-100 to-primary-50 flex items-center justify-center shrink-0">
-                          <Icon name="i-heroicons-document-text" className="w-7 h-7 text-primary-600" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-gray-900 truncate text-sm mb-1">{resume.resumeName || resume.filename || '我的简历'}</p>
-                          <p className="text-xs text-gray-400">{formatDate(resume.createTime || resume.createdAt)}</p>
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                          <button onClick={() => { setEditNameModal({ resume, index }); setEditNameValue(resume.resumeName || '') }}
-                            className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-500">
-                            <Icon name="i-heroicons-pencil" className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => setPreviewResume(resume)}
-                            className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-500">
-                            <Icon name="i-heroicons-eye" className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => setDeleteConfirm({ resume, index })}
-                            className="p-2 rounded-lg hover:bg-red-50 transition-colors text-red-500">
-                            <Icon name="i-heroicons-trash" className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                <div className="bg-gray-50 rounded-xl p-5 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-primary-100 flex items-center justify-center text-primary-600">
+                      <Icon name="i-heroicons-document-duplicate" className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-900">统一简历管理</h3>
+                      <p className="text-sm text-gray-500 mt-1">支持在线编辑、PDF解析导入及AI一键润色</p>
+                    </div>
                   </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <Icon name="i-heroicons-document-text" className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                    <p className="text-gray-500 mb-4">暂无简历</p>
-                    <Button color="primary" onClick={() => setShowUploadResume(true)}>上传第一份简历</Button>
-                  </div>
-                )}
+                  <button 
+                    onClick={() => router.push('/resume')}
+                    className="text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors"
+                  >
+                    管理我的 {userStore.resumes.length} 份简历
+                  </button>
+                </div>
               </div>
 
               <div className="bg-white rounded-2xl shadow-md p-6 border border-gray-100">
@@ -307,70 +254,7 @@ export default function ProfilePage() {
       />
       <RechargeModal open={showRecharge} onClose={() => setShowRecharge(false)} onRecharged={fetchResumes} />
 
-      {previewResume && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setPreviewResume(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <span className="font-semibold text-gray-900 truncate">{previewResume.resumeName || '简历预览'}</span>
-              <button onClick={() => setPreviewResume(null)} className="p-1 rounded-lg hover:bg-gray-100 transition-colors">
-                <Icon name="i-heroicons-x-mark" className="w-5 h-5 text-gray-500" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-hidden m-4 border rounded-lg">
-              {previewResume.resumeUrl ? (
-                <iframe src={previewResume.resumeUrl} className="w-full h-[600px]" />
-              ) : (
-                <div className="p-12 text-center text-gray-500">
-                  <Icon name="i-heroicons-document-text" className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                  <p>无法预览此文件</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
-      {deleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setDeleteConfirm(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">确认删除</h3>
-            <p className="text-gray-600 text-sm mb-6">确定要删除这份简历吗？删除后无法恢复。</p>
-            <div className="flex gap-3">
-              <button onClick={() => setDeleteConfirm(null)}
-                className="flex-1 py-2.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors text-sm">取消</button>
-              <button onClick={handleDeleteResume}
-                className="flex-1 py-2.5 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors text-sm font-medium">确定删除</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {editNameModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setEditNameModal(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">修改简历名称</h3>
-            <input
-              type="text"
-              value={editNameValue}
-              onChange={e => setEditNameValue(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleConfirmEditName()}
-              placeholder="请输入新的简历名称"
-              maxLength={10}
-              autoFocus
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition text-sm mb-2"
-            />
-            <p className="text-xs text-gray-400 mb-4">不超过 10 个字符，便于快速识别</p>
-            <div className="flex gap-3">
-              <button onClick={() => setEditNameModal(null)} disabled={editNameLoading}
-                className="flex-1 py-2.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors text-sm disabled:opacity-50">取消</button>
-              <button onClick={handleConfirmEditName} disabled={editNameLoading}
-                className="flex-1 py-2.5 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors text-sm font-medium disabled:opacity-60">
-                {editNameLoading ? '保存中...' : '保存'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   )
 }
