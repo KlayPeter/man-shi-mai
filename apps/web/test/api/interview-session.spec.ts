@@ -17,6 +17,11 @@ describe('session recovery', () => {
       expect(() => parseRecoveredInterview(data)).toThrow()
     }
   })
+  it('accepts server-confirmed practice rules and rejects malformed limits', () => {
+    expect(parseRecoveredInterview({ ...response, practiceIntensity: 'warmup', targetDuration: 15 }).targetDuration).toBe(15)
+    expect(() => parseRecoveredInterview({ ...response, practiceIntensity: 'invented' })).toThrow()
+    expect(() => parseRecoveredInterview({ ...response, targetDuration: -1 })).toThrow()
+  })
   it('keeps a retry id with the draft and clears both when starting over', () => {
     useInterviewStore.setState({ answerDraft: '我的回答', pendingAnswer: { requestId: 'same-id', expectedVersion: 2, answer: '我的回答' }, questionVersion: 2 })
     expect(useInterviewStore.getState().pendingAnswer?.requestId).toBe('same-id')

@@ -124,6 +124,38 @@ describe('persistent interview turns', () => {
     ]);
     expect(update.$set.lastTurn.events.at(-1).type).toBe('waiting');
   });
+  it('starts the next question in the relevant phase instead of repeating the introduction', async () => {
+    await answer();
+    expect(agent.generateInterviewQuestionStream).toHaveBeenCalledWith(
+      expect.objectContaining({ currentPhase: 'resume_digging' }),
+    );
+    const behavioral = fixture();
+    Object.assign(behavioral.sessionState, { interviewType: 'behavior' });
+    db.findOne.mockResolvedValue(behavioral);
+    await answer();
+    expect(agent.generateInterviewQuestionStream).toHaveBeenLastCalledWith(
+      expect.objectContaining({ currentPhase: 'behavioral_test' }),
+    );
+  });
+  it('saves the final answer and ends at the chosen practice limit without another model call', async () => {
+    const record = fixture();
+    Object.assign(record.sessionState, {
+      practiceIntensity: 'warmup',
+      questionCount: 5,
+      targetDuration: 15,
+    });
+    record.turnVersion = 5;
+    db.findOne.mockResolvedValue(record);
+    const events = await answer({ ...dto(), expectedVersion: 5 });
+    expect(events.at(-1)?.type).toBe('end');
+    expect(events.at(-1)?.questionVersion).toBe(6);
+    expect(agent.generateInterviewQuestionStream).not.toHaveBeenCalled();
+    const saved = db.findOneAndUpdate.mock.calls[1][1].$set;
+    expect(saved.status).toBe('completed');
+    expect(saved.qaList).toEqual([
+      expect.objectContaining({ question: '介绍项目', answer: '我做了缓存' }),
+    ]);
+  });
   it('never signals waiting on a save failure and releases only its own lease', async () => {
     db.findOneAndUpdate
       .mockResolvedValueOnce(fixture())

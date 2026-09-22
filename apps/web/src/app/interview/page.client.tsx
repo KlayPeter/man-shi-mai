@@ -10,6 +10,7 @@ import { toast } from '@/stores/toastStore'
 import { ssePost } from '@/lib/sse'
 import request from '@/lib/request'
 import { recoverInterview, parseRecoveredInterview } from '@/api/interview-session'
+import { PRACTICE_OPTIONS } from '@/lib/interview-policy'
 import { getUserInfoAPI } from '@/api/user'
 import Icon from '@/components/ui/Icon'
 import InterviewPreflight from '@/components/interview/InterviewPreflight'
@@ -366,6 +367,8 @@ export default function InterviewPageContent() {
         messages: res.conversationHistory.map(message => ({ ...message, timestamp: new Date(message.timestamp) })),
         sessionId: res.sessionId, resultId: rid, interviewerName: res.interviewerName,
         questionVersion: res.questionVersion,
+        activePracticeIntensity: res.practiceIntensity || null,
+        sessionTargetDuration: res.targetDuration || null,
         interviewStatus: res.status === 'completed' ? 'ended' : 'in_progress',
         interviewEventType: res.status === 'completed' ? 'end' : 'waiting',
         ...((alreadySaved || switchingSession) ? { pendingAnswer: null, answerDraft: '' } : {}),
@@ -553,6 +556,7 @@ export default function InterviewPageContent() {
     const current = useInterviewStore.getState()
     const params = current.pendingStart || {
       requestId: crypto.randomUUID(), interviewType: serviceType,
+      practiceIntensity: current.practiceIntensity,
       resumeId: current.resumeId || undefined, resumeContent: current.resumeText || undefined,
       company: current.selectedPosition.company || '', positionName: current.selectedPosition.positionName || '',
       minSalary: current.selectedPosition.minSalary, maxSalary: current.selectedPosition.maxSalary,
@@ -588,6 +592,8 @@ export default function InterviewPageContent() {
               const snapshot = parseRecoveredInterview({ ...data, busyUntil: null, committedRequestId: null })
               useInterviewStore.setState({ messages: snapshot.conversationHistory.map(message => ({ ...message, timestamp: new Date(message.timestamp) })),
                 interviewerName: snapshot.interviewerName, questionVersion: snapshot.questionVersion,
+                activePracticeIntensity: snapshot.practiceIntensity || null,
+                sessionTargetDuration: snapshot.targetDuration || null,
                 interviewStatus: snapshot.status === 'completed' ? 'ended' : snapshot.status === 'paused' ? 'suspend' : 'in_progress',
               })
               lastQuestion = snapshot.conversationHistory.at(-1)?.content || ''
@@ -1240,7 +1246,9 @@ export default function InterviewPageContent() {
             </div>
             <div>
               <p className="text-sm font-semibold text-gray-900">{interviewStore.interviewerName}</p>
-              <p className="text-xs text-gray-400">{serviceLabels[serviceType]}</p>
+              <p className="text-xs text-gray-400">{serviceLabels[serviceType]}{interviewStore.activePracticeIntensity && interviewStore.sessionTargetDuration
+                ? ` · ${PRACTICE_OPTIONS.find(option => option.value === interviewStore.activePracticeIntensity)?.label || ''} · ${interviewStore.sessionTargetDuration} 分钟上限`
+                : ''}</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">

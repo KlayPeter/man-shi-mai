@@ -1,3 +1,4 @@
+import { interviewPolicy, PracticeIntensity } from './interview-policy';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { StateGraph, START, END, Annotation } from '@langchain/langgraph';
@@ -21,6 +22,11 @@ import { createCodeSandboxTool } from '../tools/code-sandbox.tool';
  * 定义 LangGraph 的状态 Annotation
  */
 const InterviewStateAnnotation = Annotation.Root({
+  practiceIntensity: Annotation<PracticeIntensity>({
+    reducer: (x, y) => y ?? x,
+    default: () => PracticeIntensity.STANDARD,
+  }),
+  company: Annotation<string>({ reducer: (x, y) => y ?? x, default: () => '' }),
   // 1. 聊天历史消息记录
   messages: Annotation<BaseMessage[]>({
     reducer: (x, y) => x.concat(y),
@@ -221,7 +227,7 @@ export class InterviewAgentService {
     state: any,
     onChunkToken: (t: string) => void,
   ): Promise<any> {
-    const text = `你好，我是今天的技术面试官李工。很高兴能与你进行这次面试。我看到你申请的是 ${state.positionName} 岗位。首先，请你简单介绍一下自己。`;
+    const text = `你好，我是今天的面试官麦麦。很高兴能与你进行这次面试。我看到你申请的是 ${state.positionName} 岗位。首先，请你简单介绍一下自己。`;
 
     // 模拟打字机流式回传开场白
     const chunkSize = 5;
@@ -265,24 +271,19 @@ export class InterviewAgentService {
     }
 
     // 生成下一个深挖问题
-    const systemPrompt = `你现在是专业且极其犀利、严谨的技术面试官李工。当前面试处于第一阶段：【简历与项目深挖阶段】。
-候选人姓名: ${state.candidateName}
-求职岗位: ${state.positionName}
-岗位描述(JD): ${state.jd}
-候选人简历内容: ${state.resumeContent}
-
-请根据聊天历史记录，针对候选人上一次回答中的技术细节或架构决策进行极为深入的硬核追问。
-要求：
-1. 严禁接受泛泛而谈的场面话或纯概念性的八股包装。如果候选人回避具体职责或推给“DBA/中间件团队”，你必须追问其本人的具体落地细节（例如具体个人贡献、核心代码逻辑、具体参数配置、异常重试与数据对账流程）。
-2. 刨根问底，对关键指标（如吞吐量、响应时间、命中率、数据延迟等）索取合理的数据支撑与推导依据。
-3. 每次只提一个问题，保持专业、冷峻、逻辑严密、直击痛点的面试官语气。`;
+    const systemPrompt = `你是面试麦的专业面试官麦麦，当前是经历深挖阶段。
+目标岗位：${state.positionName}
+岗位要求：${state.jd}
+候选人提供的经历：${state.resumeContent || '未提供简历，请以已回答内容为依据；无经历时可问岗位情景题'}
+根据上一条回答，选择一个与目标岗位相关的贡献、决策或结果进行追问。问题要具体，不能假设候选人做过未提及的项目；已经做过自我介绍时不要重复要求。
+不得在所有岗位套用技术架构或编程问题。不要把没有提到的内容直接当成能力不足。`;
 
     const promptTemplate = PromptTemplate.fromTemplate(
       `{systemPrompt}\n\n当前聊天历史:\n{history}\n\n生成下一个追问：`,
     );
     const historyText = this.formatHistoryForLLM(state.messages);
     const formattedPrompt = await promptTemplate.format({
-      systemPrompt,
+      systemPrompt: `${systemPrompt}\n${interviewPolicy(state.practiceIntensity).guidance}`,
       history: historyText || '（暂无对话历史，请直接抛出第一个追问）',
     });
 
@@ -347,25 +348,21 @@ export class InterviewAgentService {
       };
     }
 
-    const systemPrompt = `你现在是专业、严谨且高标准的技术面试官李工。当前面试处于第二阶段：【技术实战与核心原理考核阶段】。
-求职岗位: ${state.positionName}
-岗位描述(JD): ${state.jd}
-候选人简历内容: ${state.resumeContent}
-先前已识别的技能: ${state.extractedSkills.join(', ')}
+    const systemPrompt = `你是面试麦的专业面试官麦麦，当前考察岗位专业能力。
+目标岗位：${state.positionName}
+岗位要求：${state.jd}
+候选人经历：${state.resumeContent || '未提供'}
+已经识别的技能：${state.extractedSkills.join(', ')}
+根据目标岗位与已回答内容，提出一个实际工作情景、方法或取舍问题，不重复已问内容。
+产品、设计、运营等岗位不得强制编程；技术岗位也不必固定使用 JavaScript。优先允许口头解释；只有相关软件岗位且候选人愿意写代码时才提出适合其语言的代码题。
+run_javascript_code 仅用于候选人实际提供的 JavaScript；其他语言不假装已执行。执行结果不等于能力结论，后续可追问边界和验证方法。`;
 
-请根据聊天历史，对候选人的技术底子、算法能力或系统设计进行考察。
-要求：
-1. 必须提出一道具体的 JavaScript 算法手写代码题（如实现 LRU 缓存、Top K 元素或简单数据结构），要求候选人写出完整的 JavaScript 代码实现。
-2. 每次只提一个问题。
-3. 如果候选人提交了 JavaScript 代码，你必须调用 run_javascript_code 工具执行该代码。
-4. 【重点】在拿到沙箱执行结果后，切勿仅凭输出结果正确就给予“完全正确/完美”等盲目夸奖。你必须仔细审查候选人代码的内部实现，针对以下缺陷或隐患进行严厉追问：
-   - 边界条件处理（如容量为0、传入null/undefined、空数据时的异常处理）；
-   - 数据结构的正确性（如双向链表解构时指针是否可能断裂/导致内存泄漏/空指针异常）；
-   - 并发安全性与锁竞态问题；
-   - 针对候选人回答中明显不实或含糊的概念（如多进程共享LRU实例、通过mmap共享内存等）进行毫不留情的戳穿与质疑。
-5. 保持专业、犀利、严密而严谨的面试官语气。`;
-
-    const messages = [new SystemMessage(systemPrompt), ...state.messages];
+    const messages = [
+      new SystemMessage(
+        `${systemPrompt}\n${interviewPolicy(state.practiceIntensity).guidance}`,
+      ),
+      ...state.messages,
+    ];
     const model = this.aiModelFactory.createDefaultModel();
     const sandboxTool = createCodeSandboxTool();
     const modelWithTools = model.bindTools([sandboxTool]);
@@ -419,22 +416,17 @@ export class InterviewAgentService {
       };
     }
 
-    const systemPrompt = `你现在是专业的 HR 负责人 Lisa 老师。当前面试处于第三阶段：【行为面试与软实力评估阶段】。
-求职岗位: ${state.positionName}
-岗位描述(JD): ${state.jd}
-
-请考察候选人的团队协作、沟通流畅度、抗压经历及解决冲突的能力（参考 STAR 原则）。
-要求：
-1. 每次只提一个行为面试问题。
-2. 保持专业、温和但深入的面试官语气。
-${state.questionsAskedCount === 0 ? '3. 【重要】由于刚从技术/算法阶段过渡到行为面试，请在问题最开始加一句自然的过渡句，例如：“刚才你和李工探讨了技术和并发安全，那正好我有一个关于跨团队协作与沟通的分歧处理问题……”' : ''}`;
+    const systemPrompt = `你是面试麦的 HR / 行为面试官麦麦。
+目标岗位：${state.positionName}；岗位要求：${state.jd}。
+依据已回答的经历，每次选一个协作、冲突处理、优先级、动机或情景判断问题。可追问个人行动与结果，但不能编造此前进行过技术面试，也不要再次要求自我介绍。
+不得推断未提供的经历，不即时评分，不询问与岗位无关的隐私。`;
 
     const promptTemplate = PromptTemplate.fromTemplate(
       `{systemPrompt}\n\n当前聊天历史:\n{history}\n\n生成下一个问题：`,
     );
     const historyText = this.formatHistoryForLLM(state.messages);
     const formattedPrompt = await promptTemplate.format({
-      systemPrompt,
+      systemPrompt: `${systemPrompt}\n${interviewPolicy(state.practiceIntensity).guidance}`,
       history: historyText,
     });
 
@@ -488,7 +480,7 @@ ${state.questionsAskedCount === 0 ? '3. 【重要】由于刚从技术/算法阶
     }
 
     if (state.questionsAskedCount === 0) {
-      const text = `好的，我对你的考察基本结束了。请问你对我们公司或者这个岗位有什么想了解的吗？`;
+      const text = `主要问题先聊到这里。关于目标岗位或这次练习，你还有什么想了解的吗？具体公司的薪酬与招聘安排我无法代为确认。`;
       const chunkSize = 5;
       for (let i = 0; i < text.length; i += chunkSize) {
         onChunkToken(text.slice(i, i + chunkSize));
@@ -504,20 +496,20 @@ ${state.questionsAskedCount === 0 ? '3. 【重要】由于刚从技术/算法阶
     }
 
     // 动态生成回答
-    const systemPrompt = `你现在是专业的 HR 负责人 Lisa 老师。当前面试处于最后阶段：【候选人提问/问答阶段】。
+    const systemPrompt = `你是面试麦的面试官麦麦。当前是候选人提问阶段。
 求职岗位: ${state.positionName}
-公司: 大迈科技
+公司: ${state.company || '未指定，通用模拟场景'}
 岗位描述(JD): ${state.jd}
 候选人简历内容: ${state.resumeContent}
 
-请根据候选人的提问，从 HR 和公司的角度，客观、专业、耐心地解答候选人的问题。解答完毕后，询问候选人是否还有其他想了解的问题。`;
+这是模拟练习，不代表招聘公司。仅依据已提供的岗位信息回答；未知的薪酬、团队政策和招聘安排明确说明无法确认，不得编造。解答完毕后，询问候选人是否还有其他想了解的问题。`;
 
     const promptTemplate = PromptTemplate.fromTemplate(
       `{systemPrompt}\n\n当前聊天历史:\n{history}\n\n生成对候选人提问的回答：`,
     );
     const historyText = this.formatHistoryForLLM(state.messages);
     const formattedPrompt = await promptTemplate.format({
-      systemPrompt,
+      systemPrompt: `${systemPrompt}\n${interviewPolicy(state.practiceIntensity).guidance}`,
       history: historyText,
     });
 
@@ -545,7 +537,7 @@ ${state.questionsAskedCount === 0 ? '3. 【重要】由于刚从技术/算法阶
     state: any,
     onChunkToken: (t: string) => void,
   ): Promise<any> {
-    const text = `好的，今天的面试就到这里。非常感谢你的时间和精彩回答。我待会就将评估结果反馈给业务部门，预计在 3-5 个工作日内给您答复。祝你一切顺利！`;
+    const text = `好的，今天的面试就到这里。非常感谢你的时间和精彩回答。本次为模拟面试，你可以在复盘页查看回答与改进建议。祝你一切顺利！`;
 
     const chunkSize = 5;
     for (let i = 0; i < text.length; i += chunkSize) {
@@ -706,6 +698,7 @@ ${historyText}
     }>;
     elapsedMinutes: number;
     targetDuration: number;
+    practiceIntensity?: PracticeIntensity;
     currentPhase?: any; // 从 session 传入的当前阶段
     questionsAskedCount?: number;
     extractedSkills?: string[];
@@ -751,13 +744,20 @@ ${historyText}
     // 1. 构建 LangGraph 状态输入
     const stateInput = {
       messages,
+      practiceIntensity:
+        context.practiceIntensity || PracticeIntensity.STANDARD,
+      company: context.company || '',
       currentPhase: context.currentPhase || 'introduction',
       candidateName: '候选人',
       positionName: context.positionName || '全栈工程师',
       resumeContent: context.resumeContent,
       jd: context.jd || '未提供',
       questionsAskedCount: context.questionsAskedCount || 0,
-      maxQuestionsPerPhase: context.interviewType === 'special' ? 3 : 2,
+      maxQuestionsPerPhase: context.practiceIntensity
+        ? interviewPolicy(context.practiceIntensity).maxQuestionsPerPhase
+        : context.interviewType === 'special'
+          ? 3
+          : 2,
       extractedSkills: context.extractedSkills || [],
       shouldTransition: false,
       interviewEnded: false,

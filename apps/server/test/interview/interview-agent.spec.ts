@@ -85,6 +85,58 @@ describe('InterviewAgentService', () => {
   });
 
   describe('generateInterviewQuestionStream', () => {
+    it('passes the chosen phase limit into the graph', async () => {
+      const seen: {
+        practiceIntensity: string;
+        maxQuestionsPerPhase: number;
+        currentPhase: string;
+      }[] = [];
+      Object.defineProperty(service, 'compileInterviewGraph', {
+        value: () => ({
+          invoke: async (stateInput: {
+            practiceIntensity: string;
+            maxQuestionsPerPhase: number;
+            currentPhase: string;
+          }) => {
+            seen.push(stateInput);
+            return {
+              messages: [],
+              currentPhase: stateInput.currentPhase,
+              interviewEnded: false,
+            };
+          },
+        }),
+      });
+      for (const practiceIntensity of [
+        'warmup',
+        'standard',
+        'challenge',
+      ] as const) {
+        const generator = service.generateInterviewQuestionStream({
+          interviewType: 'special',
+          resumeContent: '',
+          conversationHistory: [],
+          elapsedMinutes: 0,
+          targetDuration: 30,
+          currentPhase: 'resume_digging',
+          practiceIntensity,
+        });
+        while (!(await generator.next()).done) {
+          /* no chunks from this synthetic graph */
+        }
+      }
+      expect(
+        seen.map((state) => [
+          state.practiceIntensity,
+          state.maxQuestionsPerPhase,
+          state.currentPhase,
+        ]),
+      ).toEqual([
+        ['warmup', 1, 'resume_digging'],
+        ['standard', 2, 'resume_digging'],
+        ['challenge', 3, 'resume_digging'],
+      ]);
+    });
     it('propagates graph errors after partial output instead of returning a successful turn', async () => {
       Object.defineProperty(service, 'compileInterviewGraph', {
         value: (onChunk: (text: string) => void) => ({

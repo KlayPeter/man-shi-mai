@@ -1,9 +1,12 @@
 import request from '@/lib/request'
+import { isPracticeIntensity, type PracticeIntensity } from '@/lib/interview-policy'
 
 export interface RecoveredInterview {
   resultId: string
   sessionId: string
   interviewerName: string
+  practiceIntensity?: PracticeIntensity
+  targetDuration?: number
   status: 'in_progress' | 'paused' | 'completed'
   questionVersion: number
   busyUntil: string | null
@@ -16,6 +19,8 @@ export function parseRecoveredInterview(value: unknown): RecoveredInterview {
   const data = value as Record<string, unknown>
   if (typeof data.resultId !== 'string' || typeof data.sessionId !== 'string' ||
     typeof data.interviewerName !== 'string' || !['in_progress', 'paused', 'completed'].includes(String(data.status)) ||
+    !(!('practiceIntensity' in data) || data.practiceIntensity === undefined || isPracticeIntensity(data.practiceIntensity)) ||
+    !(!('targetDuration' in data) || data.targetDuration === undefined || (typeof data.targetDuration === 'number' && Number.isFinite(data.targetDuration) && data.targetDuration > 0 && data.targetDuration <= 120)) ||
     !Number.isInteger(data.questionVersion) || Number(data.questionVersion) < 0 ||
     !(data.busyUntil === null || (typeof data.busyUntil === 'string' && Number.isFinite(Date.parse(data.busyUntil)))) ||
     !(data.committedRequestId === null || typeof data.committedRequestId === 'string') ||

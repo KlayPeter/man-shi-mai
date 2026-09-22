@@ -1,3 +1,4 @@
+import { PracticeIntensity } from './interview-policy';
 import { z } from 'zod';
 import { MockInterviewType } from '../dto/mock-interview.dto';
 
@@ -12,6 +13,11 @@ export const interviewPhase = z.enum([
 
 // Mixed 历史数据也必须通过边界校验；日期从 JSON / Mongo 恢复为 Date。
 export const interviewSession = z.object({
+  practiceIntensity: z
+    .nativeEnum(PracticeIntensity)
+    .nullish()
+    .transform((value) => value ?? undefined)
+    .optional(),
   sessionId: z.string().min(1),
   resultId: z
     .string()

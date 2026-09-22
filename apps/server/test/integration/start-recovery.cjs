@@ -30,6 +30,7 @@ if (process.env.RUN_LOCAL_INTEGRATION !== '1' || uri !== 'mongodb://127.0.0.1:27
   const consumption = model('ConsumptionRecord', 'interview/schemas/consumption-record.schema');
   await Promise.all([users, operations, results, consumption].map(m => m.init()));
   const userId = String(new mongoose.Types.ObjectId());
+  let policyUserId;
   await users.create({ _id: userId, username: `start-test-${randomUUID()}`, specialRemainingCount: 5, behaviorRemainingCount: 0 });
   const ai = {
     generateOpeningStatement: () => '请介绍一次你主导的项目。',
@@ -82,6 +83,7 @@ if (process.env.RUN_LOCAL_INTEGRATION !== '1' || uri !== 'mongodb://127.0.0.1:27
     const first = dto();
     assert.equal((await http('start', first, false)).status, 401);
     assert.equal((await http('start', { ...first, requestId: undefined })).status, 400);
+    assert.equal((await http('start', { ...first, practiceIntensity: 'unknown' })).status, 400);
     const concurrent = await Promise.all(Array.from({ length: 8 }, () => http('start', first)));
     assert(concurrent.some(r => r.events.at(-1)?.type === 'waiting'), JSON.stringify(concurrent));
     assert.equal(await balance(), 4);
@@ -90,6 +92,10 @@ if (process.env.RUN_LOCAL_INTEGRATION !== '1' || uri !== 'mongodb://127.0.0.1:27
     assert.equal((await http('start', first)).events.at(-1).type, 'waiting');
     assert.equal(await balance(), 4);
     assert.equal(await results.countDocuments({ userId }), 1);
+    const original = await results.findOne({ userId });
+    assert.equal(original.sessionState.practiceIntensity, 'standard');
+    assert.equal(original.sessionState.targetDuration, 30);
+    assert.equal(original.sessionState.currentPhase, 'resume_digging');
     assert.equal(await consumption.countDocuments({ userId }), 1);
     assert.equal((await http('start', { ...first, positionName: '不同岗位' })).events.at(-1).type, 'error');
     const zero = { ...dto(), interviewType: 'behavior' };
@@ -147,6 +153,36 @@ if (process.env.RUN_LOCAL_INTEGRATION !== '1' || uri !== 'mongodb://127.0.0.1:27
     assert.equal(await balance(), 3);
     const publicUser = (await users.findById(userId)).toObject();
     assert(!('quotaReceipt' in publicUser)); assert(!('quotaRevision' in publicUser));
+    policyUserId = String(new mongoose.Types.ObjectId());
+    await users.create({ _id: policyUserId, username: `start-test-${randomUUID()}`, specialRemainingCount: 3, behaviorRemainingCount: 1 });
+    const policyToken = new JwtService({ secret: 'start-local-test-secret' }).sign({ userId: policyUserId });
+    for (const [intensity, duration] of [['warmup', 15], ['standard', 30], ['challenge', 45]]) {
+      const request = { ...dto(), practiceIntensity: intensity };
+      const opened = await http('start', request, true, policyToken);
+      assert.equal(opened.events.at(-1)?.type, 'waiting');
+      const record = await results.findOne({ userId: policyUserId, startRequestId: request.requestId });
+      assert.equal(record.sessionState.practiceIntensity, intensity);
+      assert.equal(record.sessionState.targetDuration, duration);
+      assert.equal(record.sessionState.currentPhase, 'resume_digging');
+      assert.equal((await http('start', request, true, policyToken)).events.at(-1)?.type, 'waiting');
+      assert.equal((await http('start', { ...request, practiceIntensity: intensity === 'warmup' ? 'challenge' : 'warmup' }, true, policyToken)).events.at(-1)?.type, 'error');
+      if (intensity === 'warmup') {
+        for (let version = 0; version < 6; version++) {
+          const answered = await http('answer', { sessionId: record.sessionState.sessionId, requestId: randomUUID(), expectedVersion: version, answer: `第 ${version + 1} 轮合成回答` }, true, policyToken);
+          assert.equal(answered.events.at(-1)?.type, version === 5 ? 'end' : 'waiting');
+        }
+        const completed = await results.findOne({ resultId: record.resultId });
+        assert.equal(completed.status, 'completed');
+        assert.equal(completed.answeredQuestions, 6);
+      }
+    }
+    assert.equal((await users.findById(policyUserId)).specialRemainingCount, 0);
+    const behaviorRequest = { ...dto(), interviewType: 'behavior', practiceIntensity: 'challenge' };
+    assert.equal((await http('start', behaviorRequest, true, policyToken)).events.at(-1)?.type, 'waiting');
+    const behaviorRecord = await results.findOne({ userId: policyUserId, startRequestId: behaviorRequest.requestId });
+    assert.equal(behaviorRecord.sessionState.currentPhase, 'behavioral_test');
+    assert.equal(behaviorRecord.sessionState.targetDuration, 45);
+    assert.equal((await users.findById(policyUserId)).behaviorRemainingCount, 0);
     console.log('PASS: JWT/DTO/HTTP/SSE; 8 concurrent starts deduct once; restart replay; payload conflict; zero-quota cancellation; cancellation before delayed start; resume failure; receipt recovery; exactly-once refund; stale debit fencing; hidden account metadata. No paid providers.');
     if (process.env.KEEP_START_SERVER === '1') {
       const pendingIds = [];
@@ -162,7 +198,8 @@ if (process.env.RUN_LOCAL_INTEGRATION !== '1' || uri !== 'mongodb://127.0.0.1:27
     }
   } finally {
     await app.close();
-    await Promise.all([users.deleteOne({ _id: userId }), operations.deleteMany({ userId }), results.deleteMany({ userId }), consumption.deleteMany({ userId })]);
+    const ownedIds = [userId, policyUserId].filter(Boolean);
+    await Promise.all([users.deleteMany({ _id: { $in: ownedIds } }), operations.deleteMany({ userId: { $in: ownedIds } }), results.deleteMany({ userId: { $in: ownedIds } }), consumption.deleteMany({ userId: { $in: ownedIds } })]);
     await mongoose.disconnect();
   }
 })().catch(error => { console.error(error.stack); process.exitCode = 1; });

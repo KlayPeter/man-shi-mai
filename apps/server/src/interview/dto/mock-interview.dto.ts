@@ -1,3 +1,4 @@
+import { PracticeIntensity } from '../services/interview-policy';
 import { ApiProperty } from '@nestjs/swagger';
 import {
   IsString,
@@ -15,14 +16,23 @@ import {
  * 面试类型枚举
  */
 export enum MockInterviewType {
-  SPECIAL = 'special', // 专项面试（约1小时）
-  COMPREHENSIVE = 'behavior', // 行测 + HR 面试（约45分钟）
+  SPECIAL = 'special', // 专业能力
+  COMPREHENSIVE = 'behavior', // HR / 行为面试
 }
 
 /**
  * 开始模拟面试请求 DTO
  */
 export class StartMockInterviewDto {
+  @ApiProperty({
+    enum: PracticeIntensity,
+    required: false,
+    default: PracticeIntensity.STANDARD,
+  })
+  @IsOptional()
+  @IsEnum(PracticeIntensity)
+  practiceIntensity?: PracticeIntensity;
+
   @ApiProperty({ description: '本次开始的请求 ID；断线重试复用' })
   @IsUUID('4')
   requestId: string;
@@ -238,6 +248,11 @@ export class MockInterviewEventDto {
   })
   metadata?: Record<string, unknown>;
 
+  @ApiProperty({ enum: PracticeIntensity, required: false })
+  practiceIntensity?: PracticeIntensity;
+
+  @ApiProperty({ description: '本场时长上限（分钟）', required: false })
+  targetDuration?: number;
   questionVersion?: number;
   requestId?: string;
   startStatus?: 'prepared' | 'ready' | 'refunding' | 'cancelled';

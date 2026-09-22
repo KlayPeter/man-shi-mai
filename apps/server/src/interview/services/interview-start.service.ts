@@ -1,3 +1,4 @@
+import { interviewPolicy, PracticeIntensity } from './interview-policy';
 import {
   BadRequestException,
   ConflictException,
@@ -97,6 +98,7 @@ export class InterviewStartService {
           dto.jd || '',
           dto.resumeId || '',
           dto.resumeContent || '',
+          ...(dto.practiceIntensity ? [dto.practiceIntensity] : []),
         ]),
       )
       .digest('hex');
@@ -121,7 +123,13 @@ export class InterviewStartService {
       conversationHistory: [],
       questionCount: 0,
       startTime: new Date(),
-      targetDuration: 120,
+      practiceIntensity: dto.practiceIntensity || PracticeIntensity.STANDARD,
+      targetDuration: interviewPolicy(
+        dto.practiceIntensity || PracticeIntensity.STANDARD,
+      ).durationMinutes,
+      currentPhase:
+        dto.interviewType === 'special' ? 'resume_digging' : 'behavioral_test',
+      questionsAskedCount: 0,
       isActive: true,
     };
     try {
@@ -347,6 +355,8 @@ export class InterviewStartService {
       startStatus: 'ready',
       status: record.status,
       interviewerName: session.interviewerName,
+      practiceIntensity: session.practiceIntensity,
+      targetDuration: session.targetDuration,
       questionVersion: version,
       isStreaming: false,
       content: session.conversationHistory.at(-1)?.content,

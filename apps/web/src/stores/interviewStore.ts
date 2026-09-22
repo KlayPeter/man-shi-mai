@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import type { PracticeIntensity } from '@/lib/interview-policy'
 
 interface Position {
   category?: string
@@ -22,6 +23,7 @@ interface Message {
 
 export interface PendingInterviewStart {
   requestId: string
+  practiceIntensity?: PracticeIntensity
   interviewType: 'special' | 'behavior'
   positionName: string
   company: string
@@ -34,6 +36,9 @@ export interface PendingInterviewStart {
 
 interface InterviewState {
   answerMode: 'voice' | 'text'
+  practiceIntensity: PracticeIntensity
+  activePracticeIntensity: PracticeIntensity | null
+  sessionTargetDuration: number | null
   pendingStart: PendingInterviewStart | null
   questionVersion: number
   answerDraft: string
@@ -87,6 +92,9 @@ export const useInterviewStore = create<InterviewState>()(
   persist(
     (set, get) => ({
       answerMode: 'voice',
+      practiceIntensity: 'standard',
+      activePracticeIntensity: null,
+      sessionTargetDuration: null,
       pendingStart: null,
       questionVersion: 0,
       answerDraft: '',
@@ -205,6 +213,8 @@ export const useInterviewStore = create<InterviewState>()(
       },
       resetInterview: () => {
         set({
+          activePracticeIntensity: null,
+          sessionTargetDuration: null,
           pendingStart: null,
           questionVersion: 0,
           answerDraft: '',
@@ -225,6 +235,9 @@ export const useInterviewStore = create<InterviewState>()(
         set({
           currentStep: 1,
           answerMode: 'voice',
+          practiceIntensity: 'standard',
+          activePracticeIntensity: null,
+          sessionTargetDuration: null,
           selectedPosition: {},
           resumeId: null,
           resumeText: '',

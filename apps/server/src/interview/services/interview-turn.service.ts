@@ -1,3 +1,4 @@
+import { interviewPolicy } from './interview-policy';
 import {
   BadRequestException,
   ConflictException,
@@ -194,7 +195,10 @@ export class InterviewTurnService {
         requestId: dto.requestId,
       });
       const next =
-        elapsedMinutes >= session.targetDuration
+        elapsedMinutes >= session.targetDuration ||
+        (session.practiceIntensity &&
+          session.questionCount >=
+            interviewPolicy(session.practiceIntensity).maxAnswers)
           ? {
               question:
                 '今天的面试到这里，感谢你的分享。接下来可以回看回答并生成复盘。',
@@ -300,7 +304,13 @@ export class InterviewTurnService {
       conversationHistory: session.conversationHistory,
       elapsedMinutes,
       targetDuration: session.targetDuration,
-      currentPhase: session.currentPhase,
+      currentPhase:
+        session.currentPhase && session.currentPhase !== 'introduction'
+          ? session.currentPhase
+          : session.interviewType === 'special'
+            ? 'resume_digging'
+            : 'behavioral_test',
+      practiceIntensity: session.practiceIntensity,
       questionsAskedCount: session.questionsAskedCount,
       extractedSkills: session.extractedSkills,
     });
@@ -390,6 +400,8 @@ export class InterviewTurnService {
       status: record.status,
       currentQuestion: this.version(record, session),
       questionVersion: this.version(record, session),
+      practiceIntensity: session.practiceIntensity,
+      targetDuration: session.targetDuration,
       lastQuestion: session.conversationHistory.at(-1)?.content,
       committedRequestId: record.lastTurn?.requestId ?? null,
       busyUntil:
