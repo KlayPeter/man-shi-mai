@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import React, { useState, useMemo, useEffect, useRef } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Icon from '@/components/ui/Icon'
 import { useInterviewStore } from '@/stores/interviewStore'
@@ -23,43 +23,9 @@ const allPositions = ((jobCatalog as any).positions ?? []).map((p: any, i: numbe
   id: p.positionId || `position-${i}`
 }))
 
-const SERVICE_OPTIONS = [
-  {
-    id: 'resume',
-    title: '面试押题',
-    badge: '3-5分钟',
-    description: '围绕岗位要求和个人经历，梳理值得提前准备的问题',
-    icon: 'i-heroicons-document-text',
-    accent: 'bg-blue-50 text-blue-500',
-    badgeClass: 'text-blue-700 bg-blue-100',
-    route: '/interview?serviceType=resume&step=input'
-  },
-  {
-    id: 'special',
-    title: '专项面试模拟',
-    badge: '约1小时',
-    description: '1v1 AI面试官深度模拟，支持语音/文字多模态作答',
-    icon: 'i-heroicons-bolt',
-    accent: 'bg-emerald-50 text-emerald-600',
-    badgeClass: 'text-emerald-700 bg-emerald-100',
-    route: '/interview?serviceType=special&step=input'
-  },
-  {
-    id: 'behavior',
-    title: '行测+HR面试',
-    badge: '约45分钟',
-    description: '综合素质评估，覆盖行测逻辑与HR软技能双维度',
-    icon: 'i-heroicons-user-group',
-    accent: 'bg-violet-50 text-violet-600',
-    badgeClass: 'text-violet-700 bg-violet-100',
-    route: '/interview?serviceType=behavior&step=input'
-  }
-]
-
 export default function InterviewStartPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const serviceDialog = useRef<HTMLDialogElement>(null)
 
   const selectedPosition = useInterviewStore(s => s.selectedPosition)
   const resumeId = useInterviewStore(s => s.resumeId)
@@ -68,7 +34,10 @@ export default function InterviewStartPageContent() {
   const setResumeId = useInterviewStore(s => s.setResumeId)
   const setResumeText = useInterviewStore(s => s.setResumeText)
   const setSelectedService = useInterviewStore(s => s.setSelectedService)
-  const resetStore = useInterviewStore(s => s.reset)
+  const selectedService = useInterviewStore(s => s.selectedService)
+  const pendingStart = useInterviewStore(s => s.pendingStart)
+  const activeResult = useInterviewStore(s => s.resultId)
+  const activeStatus = useInterviewStore(s => s.interviewStatus)
 
   const resumes = useUserStore(s => s.resumes)
   const updateResumes = useUserStore(s => s.updateResumes)
@@ -76,28 +45,35 @@ export default function InterviewStartPageContent() {
   const [searchQuery, setSearchQuery] = useState('')
   const [activeCategory, setActiveCategory] = useState('all')
   const [showAllCategories, setShowAllCategories] = useState(false)
-  const [showServiceModal, setShowServiceModal] = useState(false)
-  useEffect(() => {
-    if (showServiceModal) serviceDialog.current?.showModal()
-    else serviceDialog.current?.close()
-  }, [showServiceModal])
-
+  const [resumeLoading, setResumeLoading] = useState(true)
+  const [resumeError, setResumeError] = useState('')
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [previewResume, setPreviewResume] = useState<any>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<any>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
 
   const fetchResumes = async () => {
+    setResumeLoading(true)
+    setResumeError('')
     try {
-      const data: any = await request.get('/resume/getInterviewResumeList')
-      const list = Array.isArray(data) ? data : (data?.list || [])
-      updateResumes(list.map((r: any) => ({ ...r, resumeId: r.resumeId || r._id || r.id })))
+      const data: unknown = await request.get('/resume/getInterviewResumeList')
+      const raw = Array.isArray(data) ? data : data && typeof data === 'object' && 'list' in data ? data.list : null
+      if (!Array.isArray(raw)) throw new Error('简历列表响应无效')
+      const list = raw.map((value: unknown) => {
+        if (!value || typeof value !== 'object') throw new Error('简历记录无效')
+        const r = value as Record<string, unknown>
+        const id = r.resumeId || r._id || r.id
+        if (typeof id !== 'string') throw new Error('简历标识缺失')
+        return { ...r, resumeId: id }
+      })
+      updateResumes(list)
       const requestedResume = searchParams.get('resumeId')
       if (requestedResume && list.some((r: { resumeId?: string; _id?: string; id?: string }) => (r.resumeId || r._id || r.id) === requestedResume)) {
         const state = useInterviewStore.getState()
         if (!state.resumeId && !state.resumeText && !state.sessionId) setResumeId(requestedResume)
       }
-    } catch { toast({ title: '简历暂时加载失败，可重试或粘贴简历内容', color: 'red' }) }
+    } catch { setResumeError('简历加载失败。可以重试、粘贴经历或直接练习。') }
+    finally { setResumeLoading(false) }
   }
 
   const handleDeleteResume = async () => {
@@ -119,14 +95,6 @@ export default function InterviewStartPageContent() {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    // 只在没有进行中的面试时才重置
-    const currentState = useInterviewStore.getState()
-    const hasActiveInterview = currentState.sessionId &&
-      (currentState.interviewStatus === 'in_progress' || currentState.interviewStatus === 'starting')
-
-    if (!hasActiveInterview) {
-      resetStore?.()
-    }
     fetchResumes()
   }, [])
 
@@ -159,7 +127,7 @@ export default function InterviewStartPageContent() {
   }
 
   const selectPosition = (position: any) => {
-    setSelectedPosition(position)
+    setSelectedPosition({ ...selectedPosition, ...position })
   }
 
   const clearPosition = () => {
@@ -169,20 +137,27 @@ export default function InterviewStartPageContent() {
   }
 
   const hasPosition = !!(selectedPosition && selectedPosition.positionId)
-  const canProceed = hasPosition && !!(resumeId || resumeText.trim())
-
+  const canProceed = hasPosition
+  const hasActive = !!pendingStart || (!!activeResult && ['in_progress', 'starting', 'suspend'].includes(activeStatus))
   const handleNext = () => {
-    if (!canProceed) {
-      toast({ title: '请先选择「岗位」和「简历」', color: 'yellow' })
+    if (hasActive) {
+      const type = pendingStart?.interviewType || selectedService || 'special'
+      router.push(`/interview?serviceType=${type}&step=interview${activeResult ? `&resultId=${encodeURIComponent(activeResult)}&restore=true` : ''}`)
       return
     }
-    setShowServiceModal(true)
+    if (!canProceed) return
+    useInterviewStore.getState().resetInterview()
+    useInterviewStore.setState({ resultId: null })
+    const type = selectedService === 'behavior' ? 'behavior' : 'special'
+    setSelectedService(type)
+    router.push(`/interview?serviceType=${type}&step=input`)
   }
-
-  const handleSelectService = (service: typeof SERVICE_OPTIONS[0]) => {
-    setSelectedService(service.id)
-    setShowServiceModal(false)
-    router.push(service.route)
+  const openPrediction = () => {
+    if (!hasPosition || !(resumeId || resumeText.trim())) {
+      toast({ title: '提前押题需要目标岗位与简历或经历文本', color: 'yellow' }); return
+    }
+    setSelectedService('resume')
+    router.push('/interview?serviceType=resume&step=input')
   }
 
   const handleSelectResume = (rid: string) => {
@@ -196,19 +171,20 @@ export default function InterviewStartPageContent() {
   }
 
   return (
-    <div className="flex min-h-full flex-col gap-6 py-7 lg:h-full lg:py-8">
+    <div className="page-container flex flex-col gap-6 py-8 lg:py-12">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 text-left">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-ink mb-3">先告诉麦麦，你想去哪里。</h1>
-          <p className="text-neutral-600 text-sm">选择一个目标岗位，带上你的经历。接下来，一起练得更有针对性。</p>
+          <h1 className="text-3xl font-bold tracking-tight text-ink mb-3">把下一场面试，先练一遍。</h1>
+          <p className="text-neutral-600 text-sm">选好岗位就能开始。带上经历，让提问更贴近你。</p>
         </div>
         <div className="inline-flex items-center gap-2 text-xs text-neutral-500 justify-center">
           <Icon name="i-heroicons-sparkles" className="w-4 h-4 text-primary-500" />
-          你的准备，从这里开始
+          准备 → 试音 → 面试 → 复盘
         </div>
       </div>
 
-      <div className="start-grid">
+      {hasActive && <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary-200 bg-primary-50 p-4"><p className="text-sm text-primary-900">你还有一场待继续的面试，先回去接着聊。</p><button onClick={handleNext} className="min-h-11 text-sm font-semibold text-primary-800">继续上次面试 →</button></div>}
+      <div className="start-grid lg:h-[720px] lg:flex-none lg:grid-rows-[minmax(0,1fr)]">
         <div className="start-panel">
           <h2 className="text-lg font-semibold text-neutral-900 mb-4"><span className="mr-2 text-primary-500">01</span> 选择目标岗位</h2>
 
@@ -319,7 +295,7 @@ export default function InterviewStartPageContent() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-neutral-900">
-                  <span className="mr-2 text-primary-500">02</span> 带上你的简历
+                  <span className="mr-2 text-primary-500">02</span> 带上经历（可选）
                   <span className="ml-2 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
                     {resumes.length}/5
                   </span>
@@ -333,7 +309,7 @@ export default function InterviewStartPageContent() {
                 </button>
               </div>
 
-              {resumes.length > 0 ? (
+              {resumeLoading ? <p role="status" className="rounded-xl bg-paper p-6 text-sm text-muted">正在读取你的简历…</p> : resumeError ? <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><p>{resumeError}</p><button type="button" onClick={() => void fetchResumes()} className="mt-2 min-h-11 font-semibold underline">重试加载简历</button></div> : resumes.length > 0 ? (
                 <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
                   {resumes.map((resume: any) => {
                     const rid = resume.resumeId || resume._id || resume.id
@@ -380,7 +356,7 @@ export default function InterviewStartPageContent() {
               ) : (
                 <div className="flex flex-col items-center justify-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-lg">
                   <Icon name="i-heroicons-document-text" className="w-10 h-10 mb-2" />
-                  <p className="text-sm">暂无简历</p>
+                  <p className="text-sm">还没有简历？也可以直接练习</p>
                   <button
                     onClick={() => setShowUploadModal(true)}
                     className="mt-2 text-sm text-primary-600 hover:text-primary-700 font-medium"
@@ -407,25 +383,26 @@ export default function InterviewStartPageContent() {
                 onChange={e => handleResumeTextChange(e.target.value)}
                 aria-label="简历文本内容"
                 placeholder="粘贴你的工作经历、项目经验与技能…"
-                rows={6}
+                rows={4}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
               />
-              <p className="text-xs text-gray-500">支持直接粘贴简历文本内容，系统将自动解析</p>
+              <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-muted">{resumeId || resumeText.trim() ? '将根据你的经历展开提问' : '未提供经历，将按岗位通用问题练习'}</p>{(resumeId || resumeText) && <button type="button" onClick={() => { setResumeId(null); setResumeText('') }} className="min-h-11 text-xs text-primary-700">清除，先做通用练习</button>}</div>
+            </div>
+            <details className="rounded-xl border border-line p-4"><summary className="cursor-pointer text-sm font-semibold text-ink">补充目标公司 / 岗位要求（可选）</summary>
+              <div className="mt-4 space-y-3"><label className="block text-sm text-muted">目标公司<input value={selectedPosition.company || ''} maxLength={100} onChange={event => setSelectedPosition({ ...selectedPosition, company: event.target.value })} className="mt-2 w-full rounded-lg border border-line p-3 text-ink" /></label>
+              <label className="block text-sm text-muted">岗位要求（JD）<textarea value={selectedPosition.jd || ''} maxLength={2000} rows={4} onChange={event => setSelectedPosition({ ...selectedPosition, jd: event.target.value })} className="mt-2 w-full rounded-lg border border-line p-3 text-ink" /></label></div>
+            </details>
+            <div>
             </div>
           </div>
 
-          <div className="pt-4 border-t border-gray-200 mt-4">
-            <button
-              onClick={handleNext}
-              disabled={!canProceed}
-              className={`w-full py-3 rounded-xl text-sm font-semibold transition-all ${
-                canProceed
-                  ? 'bg-primary-600 text-white hover:bg-primary-700 shadow-md'
-                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              下一步，选择练习方式
-            </button>
+          <div className="mt-4 space-y-3 border-t border-line pt-4">
+            <h3 className="text-sm font-semibold text-ink">这次重点练什么？</h3>
+            <div role="group" aria-label="考察类型" className="grid grid-cols-2 gap-2">
+              {([{ id: 'special', title: '专业能力', icon: 'i-heroicons-briefcase' }, { id: 'behavior', title: 'HR / 行为', icon: 'i-heroicons-user-group' }] as const).map(option => <button key={option.id} type="button" aria-pressed={(selectedService === 'behavior' ? 'behavior' : 'special') === option.id} onClick={() => setSelectedService(option.id)} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm ${(selectedService === 'behavior' ? 'behavior' : 'special') === option.id ? 'border-primary-500 bg-primary-50 text-primary-900' : 'border-line text-muted'}`}><Icon name={option.icon} className="h-4 w-4" />{option.title}</button>)}
+            </div>
+            <button onClick={handleNext} disabled={!canProceed && !hasActive} className="button-primary w-full justify-center disabled:cursor-not-allowed disabled:opacity-50">{hasActive ? '继续上次面试' : '准备好了，去候场'}<Icon name="i-heroicons-arrow-right" className="h-4 w-4" /></button>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted"><span>准备与试音不扣次</span><button type="button" disabled={hasActive} onClick={openPrediction} className="min-h-11 text-primary-700 underline disabled:opacity-50">只想提前押题？</button></div>
           </div>
         </div>
       </div>
@@ -476,35 +453,7 @@ export default function InterviewStartPageContent() {
         </div>
       )}
 
-      <dialog ref={serviceDialog} aria-labelledby="practice-mode-title" onCancel={() => setShowServiceModal(false)} onClose={() => setShowServiceModal(false)} className="m-auto max-h-[90dvh] w-[calc(100%_-_2rem)] max-w-2xl overflow-y-auto rounded-2xl bg-white p-0 shadow-panel">
-          <div>
-            <div className="px-6 py-5 border-b border-gray-100">
-              <h2 id="practice-mode-title" className="text-lg font-bold text-gray-900">选择这次的练习方式</h2>
-              <p className="text-sm text-gray-500 mt-1">准备阶段不同，练习的重点也可以不同。</p>
-            </div>
-            <div className="p-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {SERVICE_OPTIONS.map(service => (
-                <button
-                  key={service.id}
-                  onClick={() => handleSelectService(service)}
-                  className="group text-left p-5 rounded-xl border-2 border-gray-200 hover:border-primary-400 hover:shadow-md transition-all"
-                >
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-3 ${service.accent}`}>
-                    <Icon name={service.icon} className="w-6 h-6" />
-                  </div>
-                  <h4 className="font-semibold text-gray-900 mb-1">{service.title}</h4>
-                  <span className={`inline-block text-xs px-2 py-0.5 rounded-full mb-2 ${service.badgeClass}`}>{service.badge}</span>
-                  <p className="text-xs text-gray-500 leading-relaxed">{service.description}</p>
-                </button>
-              ))}
-            </div>
-            <div className="px-6 py-4 border-t border-gray-100 flex justify-end">
-              <button onClick={() => setShowServiceModal(false)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
-                取消
-              </button>
-            </div>
-          </div>
-      </dialog>
+
     </div>
   )
 }

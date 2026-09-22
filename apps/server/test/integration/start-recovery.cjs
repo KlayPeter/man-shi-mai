@@ -12,6 +12,7 @@ const { PassportModule } = require('@nestjs/passport');
 const { lastValueFrom, toArray } = require('rxjs');
 const { InterviewController } = require('../../dist/src/interview/interview.controller');
 const { InterviewService } = require('../../dist/src/interview/services/interview.service');
+const { InterviewTurnService } = require('../../dist/src/interview/services/interview-turn.service');
 const { InterviewStartService } = require('../../dist/src/interview/services/interview-start.service');
 const { InterviewReportService } = require('../../dist/src/interview/services/interview-report.service');
 const { InterviewSpeechService } = require('../../dist/src/interview/services/interview-speech.service');
@@ -30,27 +31,46 @@ if (process.env.RUN_LOCAL_INTEGRATION !== '1' || uri !== 'mongodb://127.0.0.1:27
   await Promise.all([users, operations, results, consumption].map(m => m.init()));
   const userId = String(new mongoose.Types.ObjectId());
   await users.create({ _id: userId, username: `start-test-${randomUUID()}`, specialRemainingCount: 5, behaviorRemainingCount: 0 });
-  const ai = { generateOpeningStatement: () => '请介绍一次你主导的项目。' };
+  const ai = {
+    generateOpeningStatement: () => '请介绍一次你主导的项目。',
+    generateInterviewAssessmentReport: async ({ qaList }) => ({
+      overallScore: 70, overallLevel: '继续练习', overallComment: '合成测试复盘：已记录回答，请继续补充验证过程。',
+      radarData: [], strengths: [], weaknesses: [], improvements: [], fluencyScore: null, logicScore: null, professionalScore: null,
+      evidence: [{ questionNumber: 1, quote: qaList[0].answer.slice(0, 12), kind: 'improvement', feedback: '补充你如何验证改进。', practice: '用相同流量对比改进前后结果。' }],
+    }),
+  };
+  const turns = new InterviewTurnService(results, { async *generateInterviewQuestionStream(context) {
+    const count = context.conversationHistory.filter(message => message.role === 'candidate').length;
+    const question = count === 1 ? '如何验证改进效果？' : '如果流量继续增加，你会如何调整？';
+    yield question;
+    return { question, shouldEnd: false };
+  } });
+  const reports = new InterviewReportService(results, ai);
   let ledger = new QuotaLedgerService(users, operations);
   let service = new InterviewStartService(results, consumption, ledger, ai);
   const facade = {
+    answerMockInterviewWithStream: (uid, sid, answer, requestId, expectedVersion) => turns.answer(uid, { sessionId: sid, answer, requestId, expectedVersion }),
+    resumeMockInterview: (uid, rid) => turns.resume(uid, rid),
+    endMockInterview: (uid, rid) => turns.end(uid, rid),
+    pauseMockInterview: (uid, rid) => turns.pause(uid, rid),
     startMockInterviewWithStream: (uid, dto) => service.start(uid, dto, async () => ''),
     cancelMockInterviewStart: (uid, dto) => service.cancel(uid, dto),
   };
   const module = await Test.createTestingModule({ imports: [PassportModule.register({ defaultStrategy: 'jwt' })], controllers: [InterviewController], providers: [JwtStrategy, JwtAuthGuard,
-    { provide: InterviewService, useValue: facade }, { provide: InterviewReportService, useValue: {} }, { provide: InterviewSpeechService, useValue: {} },
+    { provide: InterviewService, useValue: facade }, { provide: InterviewReportService, useValue: reports }, { provide: InterviewSpeechService, useValue: {} },
     { provide: ConfigService, useValue: new ConfigService({ JWT_SECRET: 'start-local-test-secret' }) },
   ] }).compile();
   const app = module.createNestApplication({ logger: false });
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
-  await app.listen(3010, '127.0.0.1');
+  const port = Number(process.env.TEST_START_PORT || 3010);
+  await app.listen(port, '127.0.0.1');
   const token = new JwtService({ secret: 'start-local-test-secret' }).sign({ userId });
   const dto = () => ({ requestId: randomUUID(), interviewType: 'special', positionName: '前端工程师' });
   const balance = async () => (await users.findById(userId)).specialRemainingCount;
   const run = (s, d, resolver = async () => '') => lastValueFrom(s.start(userId, d, resolver).pipe(toArray()));
   const proxy = (target, method, intercept) => new Proxy(target, { get(t, key) { if (key === method) return intercept; const v = Reflect.get(t, key); return typeof v === 'function' ? v.bind(t) : v; } });
   async function http(path, body, auth = true) {
-    const response = await fetch(`http://127.0.0.1:3010/interview/mock/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body), signal: AbortSignal.timeout(10000) });
+    const response = await fetch(`http://127.0.0.1:${port}/interview/mock/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body), signal: AbortSignal.timeout(10000) });
     const text = await response.text();
     return { status: response.status, text, events: text.split('\n').filter(l => l.startsWith('data: ')).map(l => JSON.parse(l.slice(6))) };
   }
@@ -112,8 +132,8 @@ if (process.env.RUN_LOCAL_INTEGRATION !== '1' || uri !== 'mongodb://127.0.0.1:27
     assert(!('quotaReceipt' in publicUser)); assert(!('quotaRevision' in publicUser));
     console.log('PASS: JWT/DTO/HTTP/SSE; 8 concurrent starts deduct once; restart replay; payload conflict; zero-quota cancellation; cancellation before delayed start; resume failure; receipt recovery; exactly-once refund; stale debit fencing; hidden account metadata. No paid providers.');
     if (process.env.KEEP_START_SERVER === '1') {
-      await writeFile('/tmp/msm-phase1-local/start-ui-fixture.json', JSON.stringify({ token, userId }), { mode: 0o600 });
-      console.log('Browser fixture ready on 3010');
+      await writeFile(process.env.START_FIXTURE_PATH || '/tmp/msm-phase1-local/start-ui-fixture.json', JSON.stringify({ token, userId }), { mode: 0o600 });
+      console.log(`Browser fixture ready on ${port}`);
       await new Promise(resolve => process.once('SIGTERM', resolve));
     }
   } finally {

@@ -33,6 +33,7 @@ export interface PendingInterviewStart {
 }
 
 interface InterviewState {
+  answerMode: 'voice' | 'text'
   pendingStart: PendingInterviewStart | null
   questionVersion: number
   answerDraft: string
@@ -85,6 +86,7 @@ const isEmpty = (obj: any) => {
 export const useInterviewStore = create<InterviewState>()(
   persist(
     (set, get) => ({
+      answerMode: 'voice',
       pendingStart: null,
       questionVersion: 0,
       answerDraft: '',
@@ -222,6 +224,7 @@ export const useInterviewStore = create<InterviewState>()(
       reset: () => {
         set({
           currentStep: 1,
+          answerMode: 'voice',
           selectedPosition: {},
           resumeId: null,
           resumeText: '',

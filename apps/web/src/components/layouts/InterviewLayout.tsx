@@ -21,7 +21,7 @@ export default function InterviewLayout({ children }: { children: React.ReactNod
   const isHistory = searchParams.get('history') === 'true'
   const step = searchParams.get('step')
   const currentStep = pathname === '/interview/start' ? 1 : pathname === '/interview/report' || step === 'complete' ? 3 : 2
-  const isBusy = step === 'progress' || (step === 'interview' && interviewStatus !== 'ended')
+  const isBusy = step === 'progress' || (step === 'interview' && ['in_progress', 'starting'].includes(interviewStatus))
   const navigate = (path: string) => {
     if (isBusy) { toast({ title: step === 'progress' ? '正在生成内容，请完成后再离开' : '请先结束面试再离开练习室', color: 'yellow' }); return }
     router.push(path)

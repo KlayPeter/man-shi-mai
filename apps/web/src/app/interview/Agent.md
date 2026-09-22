@@ -1,46 +1,41 @@
 # 面试准备、练习与报告
 
-本模块分为 `/interview/start`、`/interview` 和 `/interview/report`，各路由通过 page.tsx 引入客户端内容。共用 InterviewLayout：桌面使用深色流程侧栏，手机保留顶部返回和步骤提示。
+本模块分为 `/interview/start`、`/interview` 和 `/interview/report`。准备页与候场沿用 DefaultLayout 主导航；正式面试、押题生成与复盘进入 InterviewLayout。仅面试路由的布局读取 query，并置于 Suspense，其他页面保留静态输出。
 
 ```mermaid
-flowchart TD
-    A[选择目标岗位与简历或文本] --> B[选择练习类型]
-    B --> C[interview input 填写公司 薪资 JD]
-    C --> D[确认开始]
-    D --> E{服务类型}
-    E -->|resume| F[流式生成押题]
-    E -->|special 或 behavior| G[模拟面试与多轮回答]
-    F --> H[complete 展示结果]
-    G --> I[结束面试与查看报告]
-    H --> I
-    J[练习记录] --> K[history 模式加载已有结果]
-    K --> I
+flowchart LR
+    A[岗位 必填] --> B[经历 公司 JD 可选]
+    B --> C[专业能力 或 HR行为]
+    C --> D[候场 本地试麦与文字选择]
+    D --> E[明确开始 扣一次权益]
+    E --> F[多轮回答 暂停 恢复]
+    F --> G[结束 逐题复盘]
+    B --> H[单独入口 提前押题]
 ```
 
 ## 准备页
 
-- 岗位来自 job-categories.json，支持搜索、分类与键盘选择；状态保存在 useInterviewStore。
-- 简历列表通过 `/resume/getInterviewResumeList` 加载并写入 useUserStore。也可上传、预览、删除或粘贴简历文本。
-- 有目标岗位且有简历 ID 或非空文本才启用下一步。粘贴有效文本会清除已选简历 ID。
-- 简历中心通过 `?resumeId=` 进入时，成功加载并匹配后预选；不覆盖已有文本、简历或进行中的会话。
-- 练习类型弹窗使用原生 dialog，支持 Escape、焦点约束与关闭后返回焦点。选择类型只写状态并跳转，不扣减权益。
-- 跳转目标为 `/interview?serviceType=resume|special|behavior&step=input`。
+- 岗位来自 job-categories.json，支持搜索、分类与键盘选择；选择状态保存在 useInterviewStore，返回页面不再自动 reset。
+- 目标岗位必选。简历 ID、经历文本、公司、JD 对模拟面试均可选；公司和 JD 收入展开区，未提供经历时标明岗位通用练习。选择新岗位保留已填公司与 JD。
+- 简历列表的加载、失败、空数据分别显示。失败提供原地重试、文本输入和通用练习；不把坏响应当成空列表。简历中心的 resumeId 预选不覆盖现有草稿或场次。
+- 专业能力与 HR/行为两类以行内按钮选择；默认专业能力。已有进行中或待确认开始时显示继续入口，避免用新开始覆盖未确认请求。提前押题保持单独入口，仍需岗位与简历或经历文本。
+- 跳转 `/interview?serviceType=special|behavior&step=input` 后直接候场，不再重复填写表单。押题仍进入原 input 表单。
 
-## 练习工作区
+## 候场与面试室
 
-- `serviceType` 为 resume、special、behavior；`step` 为 input、progress、interview、complete、error。
-- input 收集公司、岗位、薪资和 JD，JD 长度要求 50–2000 字；确认开始、权益检查与后端交互沿用 page.client.tsx 业务处理。
-- useInterviewStore 共享岗位、简历、会话、消息和进度。本地状态管理输入、生成进度、弹窗和流连接。
-- 普通 HTTP 通过 request；流式请求通过 ssePost 和统一 SSE 代理。不要将 SSE 当成一次性 JSON 请求。
-- 押题流：`/interview/resume/quiz/stream`；模拟面试流：`/interview/mock/start`、`/interview/mock/answer`；结束：`POST /interview/mock/end/:resultId`。
-- 历史入口使用 `history=true&resultId=`，按类型加载押题结果或模拟问答、历史会话。页面复用 AnswerComposer、RestoreInterviewModal、InterviewConfirmModal 与语音合成 Hook。
-- InterviewLayout 在 progress 或尚未结束的 interview 阶段阻止离开；步骤 complete 与报告页显示复盘阶段。不要仅改变导航外观而移除该守卫。
+- `InterviewPreflight` 展示岗位、经历来源、三段流程、回答方式和实际扣次规则。试麦使用 InterviewRecorder，本机录音与回听；不调用 ASR 或上传 API，不建立面试场次。
+- 麦克风拒绝、缺失、不支持均给出错误并允许改用文字；离开、切换方式与正式开始会释放设备、朗读与 Blob URL。正在试麦时需停止后再入场。
+- 回答方式存入 answerMode；AnswerComposer 按该偏好初始化，并在持久化状态恢复后同步。默认语音，文字随时接管。
+- 用户确认开始后进入面试室，保留原倒计时与 durable start 协议。恢复动作开始后，旧延迟初始化不能再次打开恢复弹窗。
+- 暂停通过真实后端接口确认，保存草稿并允许离开；继续读取当前问题。再听一遍只朗读当前问题，不提交回答或增加轮次。暂停/结束过程中禁用回答并释放录音。
+- useInterviewStore 管理岗位、简历、会话与草稿；HTTP 与 SSE 仍通过统一代理。退出与切换时保留既有取消和清理逻辑。
+- 简历押题仍使用原确认与 SSE 入口；此次仅修复经历文本被误判为没有简历，未改造押题计费或新增供应商。
 
 ## 报告与验证
 
 押题报告沿用 `GET /interview/analysis/report/:resultId`；模拟面试的 special/behavior 进入 `components/interview/InterviewReview.tsx`，通过 `src/api/interview-review.ts` 查询新复盘接口。缺少 resultId 时返回准备页。
 
-`e2e/ui-redesign.spec.ts` 使用 Mock API 验证断点布局、简历预选、岗位键盘选择、下一步条件、类型弹窗与进入 input。它不发起真实 SSE、模型调用或权益扣减；完整会话、语音授权、断连恢复与交易仍需独立联调。相关修改必须保留流取消、定时器和监听清理逻辑。
+`e2e/ui-redesign.spec.ts` 使用 Mock API 验证断点布局、简历预选、岗位键盘选择、可选简历与直接进入候场。它不发起真实 SSE、模型调用或权益扣减；完整会话、语音授权、断连恢复与交易仍需独立联调。相关修改必须保留流取消、定时器和监听清理逻辑。
 
 ### 模拟面试复盘
 
@@ -86,3 +81,8 @@ flowchart LR
 ### 开场失败与重试
 
 Store 的 `pendingStart` 在请求前保存 UUID 和输入快照。SSE 的 ready 快照及确认事件到齐才清除；断线、刷新后沿用原请求，避免重新扣次。错误区提供「重试开始 / 取消开始」；取消经普通 HTTP 代理确认后才返回准备页，服务端已 ready 则引导恢复。退出登录同时清理 pendingStart。`start-local.spec.ts` 验证真实代理的开场响应丢失、刷新重试与零次数取消；模型和实际语音质量另行验收。
+
+
+### 从准备到复盘的本地验收
+
+`preparation-local.spec.ts` 配合 `test/integration/start-recovery.cjs` 的 KEEP_START_SERVER、TEST_START_PORT 和 START_FIXTURE_PATH，在专用 Mongo 上连接真实 Controller、JWT、DTO、开场、扣次、回合、暂停/恢复、结束与报告服务。浏览器分别检查试音回听和拒绝授权后文字接管，完成两轮回答并生成带原文引用的复盘。模型/报告输出为明确 Stub，用户资料和简历列表为 Mock；不代表真实登录、ASR 或模型质量验收。禁止将该服务作为生产 API。

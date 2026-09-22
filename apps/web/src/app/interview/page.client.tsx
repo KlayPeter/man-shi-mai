@@ -12,6 +12,7 @@ import request from '@/lib/request'
 import { recoverInterview, parseRecoveredInterview } from '@/api/interview-session'
 import { getUserInfoAPI } from '@/api/user'
 import Icon from '@/components/ui/Icon'
+import InterviewPreflight from '@/components/interview/InterviewPreflight'
 import InterviewConfirmModal from '@/components/interview/InterviewConfirmModal'
 import AnswerComposer from '@/components/interview/AnswerComposer'
 import RestoreInterviewModal from '@/components/interview/RestoreInterviewModal'
@@ -57,6 +58,7 @@ export default function InterviewPageContent() {
   const answerInFlight = useRef(false)
   const startInFlight = useRef(false)
   const [startError, setStartError] = useState('')
+  const recoveryStarted = useRef(false)
   const recoveryRef = useRef<AbortController | null>(null)
   const [isRecovering, setIsRecovering] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
@@ -140,6 +142,7 @@ export default function InterviewPageContent() {
 
     // 等待 zustand persist 从 localStorage 恢复状态
     const timer = setTimeout(() => {
+      if (recoveryStarted.current) return
       if (useInterviewStore.getState().pendingStart && serviceType !== 'resume') {
         setShowRestoreModal(true)
         if (step !== 'interview') updateQuery({ step: 'interview' })
@@ -339,6 +342,7 @@ export default function InterviewPageContent() {
   }
 
   const handleRestoreInterview = async () => {
+    recoveryStarted.current = true
     setShowRestoreModal(false)
     const currentState = useInterviewStore.getState()
     if (currentState.pendingStart) { void startInterviewSSE(); return }
@@ -395,7 +399,7 @@ export default function InterviewPageContent() {
       router.push('/interview/start')
       return
     }
-    if (!interviewStore.resumeId) {
+    if (!interviewStore.resumeId && !interviewStore.resumeText.trim()) {
       toast({ title: '请先选择简历', color: 'yellow' })
       router.push('/interview/start')
       return
@@ -715,6 +719,19 @@ export default function InterviewPageContent() {
     }
   }, [currentResultId, speechSynthesis])
 
+  const pauseInterview = async () => {
+    const current = useInterviewStore.getState()
+    if (!current.resultId || isStreaming || isRecovering || current.interviewStatus !== 'in_progress') return
+    setIsRecovering(true)
+    speechSynthesis.stop()
+    try {
+      await request.post(`/interview/mock/pause/${encodeURIComponent(current.resultId)}`, {})
+      useInterviewStore.setState({ interviewStatus: 'suspend' })
+    } catch (error: unknown) {
+      toast({ title: '暂停未完成', description: error instanceof Error ? error.message : '请重试', color: 'red' })
+    } finally { setIsRecovering(false) }
+  }
+
   const startInterview = () => {
     interviewStore.setInterviewStatus('starting')
     updateQuery({ step: 'interview' })
@@ -787,6 +804,10 @@ export default function InterviewPageContent() {
   const cfg = SERVICE_CONFIGS[serviceType]
   const MIN_JD = 50
   const MAX_JD = 2000
+
+  if (step === 'input' && serviceType !== 'resume') {
+    return <InterviewPreflight type={serviceType} remaining={serviceType === 'special' ? userStore.userInfo.specialRemainingCount : userStore.userInfo.behaviorRemainingCount} onStart={startInterview} />
+  }
 
   if (step === 'input') {
     return (
@@ -1250,6 +1271,10 @@ export default function InterviewPageContent() {
                 停止朗读
               </button>
             )}
+            {!isEnded && !interviewStore.pendingStart && <>
+              <button type="button" disabled={isStreaming || isRecovering || !sessionId} onClick={interviewStatus === 'suspend' ? handleRestoreInterview : pauseInterview} className="min-h-11 rounded-lg border border-line px-3 text-xs text-muted disabled:opacity-50">{interviewStatus === 'suspend' ? '继续面试' : '暂停面试'}</button>
+              <button type="button" disabled={isStreaming || isRecovering || interviewStatus !== 'in_progress' || !speechSynthesis.isSupported} onClick={() => { const question = [...messages].reverse().find(message => message.role === 'interviewer'); if (question) { speechSynthesis.stop(); if (!speechSynthesis.isEnabled) speechSynthesis.toggle(); speechSynthesis.handleStreamText(question.content, true) } }} className="min-h-11 rounded-lg border border-line px-3 text-xs text-muted disabled:opacity-50">再听一遍</button>
+            </>}
             {!isEnded && <button type="button" onClick={handleRestoreInterview} disabled={isStreaming || isRecovering}
               className="inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-line px-3 text-xs text-muted disabled:opacity-50">
               <Icon name="i-heroicons-arrow-path" className="h-3.5 w-3.5" />同步进度
@@ -1292,6 +1317,7 @@ export default function InterviewPageContent() {
           </div>
         </div>}
         {/* 消息列表 */}
+        {interviewStatus === 'suspend' && <p role="status" className="bg-primary-50 px-6 py-3 text-sm text-primary-900">已暂停，草稿已保留。继续后从当前问题接着回答。</p>}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {messages.length === 0 && !isStreaming && (
             <div className="flex flex-col items-center justify-center h-full text-center">
@@ -1334,7 +1360,7 @@ export default function InterviewPageContent() {
           <div ref={messagesEndRef} />
         </div>
 
-        {!isEnded && <AnswerComposer value={inputMessage} onChange={setInputMessage}
+        {!isEnded && <AnswerComposer key={interviewStore.answerMode} initialMode={interviewStore.answerMode} value={inputMessage} onChange={setInputMessage}
           onSend={sendAnswer} disabled={!canSend || isStreaming}
           onBeforeRecord={speechSynthesis.stop} />}
 

@@ -6,9 +6,9 @@ import { InterviewRecorder, RECORDING_LIMIT_SECONDS, recordingError } from '@/li
 import { transcribeInterviewAudio, speechFailureMessage } from '@/api/interview-speech'
 
 type VoiceState = 'idle' | 'requesting' | 'recording' | 'transcribing' | 'ready' | 'error'
-interface Props { value: string; onChange: (value: string) => void; onSend: (value: string) => void; disabled: boolean; onBeforeRecord: () => void }
-export default function AnswerComposer({ value, onChange, onSend, disabled, onBeforeRecord }: Props) {
-  const [mode, setMode] = useState<'voice' | 'text'>('voice')
+interface Props { initialMode?: 'voice' | 'text'; value: string; onChange: (value: string) => void; onSend: (value: string) => void; disabled: boolean; onBeforeRecord: () => void }
+export default function AnswerComposer({ value, onChange, onSend, disabled, onBeforeRecord, initialMode = 'voice' }: Props) {
+  const [mode, setMode] = useState<'voice' | 'text'>(initialMode)
   const [state, setState] = useState<VoiceState>('idle')
   const [error, setError] = useState('')
   const [level, setLevel] = useState(0)
