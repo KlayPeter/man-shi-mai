@@ -10,11 +10,16 @@ import { BaiduSpeechService } from '../../src/interview/services/baidu-speech.se
 
 describe('speech request boundary', () => {
   const audio = { toPcm: jest.fn() };
-  const provider = { assertConfigured: jest.fn(), recognize: jest.fn() };
+  const provider = {
+    isConfigured: jest.fn(),
+    assertConfigured: jest.fn(),
+    recognize: jest.fn(),
+  };
   let service: InterviewSpeechService;
   const input = Buffer.from('synthetic-input').toString('base64');
   beforeEach(async () => {
     jest.resetAllMocks();
+    provider.isConfigured.mockReturnValue(true);
     audio.toPcm.mockResolvedValue(Buffer.alloc(32000));
     provider.recognize.mockResolvedValue('合成转写');
     const module = await Test.createTestingModule({
@@ -25,6 +30,12 @@ describe('speech request boundary', () => {
       ],
     }).compile();
     service = module.get(InterviewSpeechService);
+  });
+  it('reports configuration without contacting or charging the provider', () => {
+    expect(service.isConfigured()).toBe(true);
+    provider.isConfigured.mockReturnValue(false);
+    expect(service.isConfigured()).toBe(false);
+    expect(provider.recognize).not.toHaveBeenCalled();
   });
   it('validates real DTO and preserves only audio', async () => {
     const pipe = new ValidationPipe({ transform: true, whitelist: true });

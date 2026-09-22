@@ -1,6 +1,11 @@
 import request from '@/lib/request'
 import { MAX_RECORDING_BYTES } from '@/lib/interview-recorder'
 
+export async function isInterviewSpeechConfigured(signal?: AbortSignal): Promise<boolean> {
+  const result = await request.get<unknown, unknown>('/interview/speech/status', { signal })
+  return !!result && typeof result === 'object' && 'available' in result && result.available === true
+}
+
 export function audioToBase64(blob: Blob, signal: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()

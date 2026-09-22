@@ -15,6 +15,15 @@ describe('Baidu speech transport (no network)', () => {
     http = jest.spyOn(globalThis, 'fetch');
   });
   afterEach(() => http.mockRestore());
+  it('checks whether both credentials are configured without making a request', () => {
+    expect(service.isConfigured()).toBe(true);
+    expect(
+      new BaiduSpeechService(
+        new ConfigService({ BAIDU_API_KEY: 'test-key' }),
+      ).isConfigured(),
+    ).toBe(false);
+    expect(http).not.toHaveBeenCalled();
+  });
   it('caches authorization, uses HTTPS and never sends a raw user identifier', async () => {
     http
       .mockResolvedValueOnce(

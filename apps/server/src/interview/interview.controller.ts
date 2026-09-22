@@ -163,7 +163,6 @@ export class InterviewController {
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no'); // 禁用 Nginx 缓冲
-    res.setHeader('Access-Control-Allow-Origin', '*'); // 如果需要CORS
 
     // 发送初始注释，保持连接活跃
     res.write(': connected\n\n');
@@ -256,7 +255,6 @@ export class InterviewController {
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no'); // 禁用 Nginx 缓冲
-    res.setHeader('Access-Control-Allow-Origin', '*'); // 如果需要CORS
 
     // 发送初始注释，保持连接活跃
     res.write(': connected\n\n');
@@ -527,6 +525,12 @@ export class InterviewController {
   /**
    * 语音转文字
    */
+  @Get('speech/status')
+  @ApiOperation({ summary: '查询语音识别是否已配置' })
+  speechStatus() {
+    return ResponseUtil.success({ available: this.speech.isConfigured() });
+  }
+
   @Post('speech-to-text')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: '语音转文字' })

@@ -17,6 +17,9 @@ export class InterviewSpeechService {
     private readonly audio: AudioTranscoderService,
     private readonly provider: BaiduSpeechService,
   ) {}
+  isConfigured(): boolean {
+    return this.provider.isConfigured();
+  }
   async transcribe(userId: string, encoded: string): Promise<string> {
     if (
       typeof encoded !== 'string' ||

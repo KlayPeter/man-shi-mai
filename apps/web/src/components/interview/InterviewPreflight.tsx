@@ -7,6 +7,7 @@ import { useInterviewStore } from '@/stores/interviewStore'
 import { PRACTICE_OPTIONS } from '@/lib/interview-policy'
 import { InterviewRecorder, recordingError } from '@/lib/interview-recorder'
 import { useSpeechSynthesis } from '@/hooks/useSpeechSynthesis'
+import { isInterviewSpeechConfigured } from '@/api/interview-speech'
 
 export default function InterviewPreflight({ type, remaining, onStart }: {
   type: 'special' | 'behavior'; remaining?: number; onStart: () => void
@@ -20,9 +21,26 @@ export default function InterviewPreflight({ type, remaining, onStart }: {
   const [level, setLevel] = useState(0)
   const [audio, setAudio] = useState<Blob | null>(null)
   const [url, setUrl] = useState('')
+  const [speechStatus, setSpeechStatus] = useState<'checking' | 'ready' | 'unavailable'>('checking')
   const recorder = useRef<InterviewRecorder | null>(null)
   const generation = useRef(0)
   const sound = useSpeechSynthesis()
+  const effectiveAnswerMode = speechStatus === 'ready' ? answerMode : 'text'
+  useEffect(() => {
+    const controller = new AbortController()
+    void isInterviewSpeechConfigured(controller.signal)
+      .then(available => {
+        if (controller.signal.aborted) return
+        setSpeechStatus(available ? 'ready' : 'unavailable')
+        if (!available && useInterviewStore.getState().answerMode === 'voice') useInterviewStore.setState({ answerMode: 'text' })
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return
+        setSpeechStatus('unavailable')
+        if (useInterviewStore.getState().answerMode === 'voice') useInterviewStore.setState({ answerMode: 'text' })
+      })
+    return () => controller.abort()
+  }, [])
   useEffect(() => () => { generation.current++; recorder.current?.cancel() }, [])
   useEffect(() => {
     if (!audio) { setUrl(''); return }
@@ -48,7 +66,11 @@ export default function InterviewPreflight({ type, remaining, onStart }: {
       recorder.current = null; setState('idle'); setError(recordingError(failure))
     }
   }
-  const begin = () => { cancel(); setAudio(null); onStart() }
+  const begin = () => {
+    cancel(); setAudio(null)
+    if (speechStatus !== 'ready') useInterviewStore.setState({ answerMode: 'text' })
+    onStart()
+  }
   return <div className="page-container py-8 sm:py-12">
     <Link href="/interview/start" className="inline-flex min-h-11 items-center gap-2 text-sm text-muted"><ArrowLeft size={16} />返回准备</Link>
     <div className="mt-5 grid gap-8 lg:grid-cols-[1.1fr_1fr]">
@@ -82,9 +104,10 @@ export default function InterviewPreflight({ type, remaining, onStart }: {
         </fieldset>
         <div><h2 className="text-xl font-semibold text-ink">用你舒服的方式开始</h2><p className="mt-2 text-sm text-muted">面试中可随时切换。试音仅在本机处理，不上传、不扣次。</p></div>
         <div className="grid grid-cols-2 gap-3" role="group" aria-label="入场回答方式">
-          {([{ mode: 'voice', label: '语音面试', Icon: Mic }, { mode: 'text', label: '文字面试', Icon: MessageSquare }] as const).map(item => <button key={item.mode} aria-pressed={answerMode === item.mode} onClick={() => { cancel(); useInterviewStore.setState({ answerMode: item.mode }) }} className={`flex min-h-16 items-center justify-center gap-2 rounded-xl border p-3 ${answerMode === item.mode ? 'border-primary-500 bg-primary-50 text-primary-800' : 'border-line bg-white text-ink'}`}><item.Icon size={19} />{item.label}</button>)}
+          {([{ mode: 'voice', label: '语音面试', Icon: Mic }, { mode: 'text', label: '文字面试', Icon: MessageSquare }] as const).map(item => <button key={item.mode} type="button" disabled={item.mode === 'voice' && speechStatus !== 'ready'} aria-pressed={effectiveAnswerMode === item.mode} onClick={() => { cancel(); useInterviewStore.setState({ answerMode: item.mode }) }} className={`flex min-h-16 items-center justify-center gap-2 rounded-xl border p-3 disabled:cursor-not-allowed disabled:opacity-50 ${effectiveAnswerMode === item.mode ? 'border-primary-500 bg-primary-50 text-primary-800' : 'border-line bg-white text-ink'}`}><item.Icon size={19} />{item.label}</button>)}
         </div>
-        {answerMode === 'voice' && <div className="rounded-2xl border border-line bg-white p-5">
+        {speechStatus !== 'ready' && <p role="status" className="text-sm text-muted">{speechStatus === 'checking' ? '正在确认语音识别服务…' : '语音识别暂不可用，当前可使用文字面试。'}</p>}
+        {effectiveAnswerMode === 'voice' && <div className="rounded-2xl border border-line bg-white p-5">
           <div className="flex flex-wrap items-center gap-3">
             <button type="button" disabled={state === 'requesting'} onClick={() => state === 'recording' ? recorder.current?.stop() : void testMic()} className="button-primary !min-h-11 !px-4 !text-sm">{state === 'requesting' ? '等待麦克风授权' : state === 'recording' ? '停止并回听' : '试一下麦克风'}</button>
             <button type="button" disabled={state === 'recording' || state === 'requesting' || !sound.isSupported} onClick={() => { sound.stop(); sound.handleStreamText('你好，欢迎来到面试麦。准备好了，我们就开始。', true) }} className="inline-flex min-h-11 items-center gap-2 text-sm text-ink disabled:opacity-50"><Volume2 size={17} />试听面试官</button>

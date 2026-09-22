@@ -15,11 +15,14 @@ export class BaiduSpeechService {
   private token?: { value: string; expiresAt: number };
   private tokenRequest?: Promise<string>;
   constructor(private readonly config: ConfigService) {}
+  isConfigured(): boolean {
+    return Boolean(
+      this.config.get<string>('BAIDU_API_KEY') &&
+      this.config.get<string>('BAIDU_SECRET_KEY'),
+    );
+  }
   assertConfigured() {
-    if (
-      !this.config.get<string>('BAIDU_API_KEY') ||
-      !this.config.get<string>('BAIDU_SECRET_KEY')
-    )
+    if (!this.isConfigured())
       throw new ServiceUnavailableException(
         '语音识别暂未开通，请使用文字回答。',
       );

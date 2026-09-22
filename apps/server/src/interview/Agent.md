@@ -131,6 +131,8 @@ flowchart LR
 
 `POST /interview/speech-to-text` 由 `InterviewSpeechService` 编排，`AudioTranscoderService` 使用随包 ffmpeg，`BaiduSpeechService` 管理 HTTPS Token 与识别请求；不再放在面试主服务中。请求保留 `{ audio: Base64 }`，返回 `{ text }`。
 
+`GET /interview/speech/status` 受 JWT 保护，只返回语音识别凭据是否已配置；不请求供应商，也不保证其实时可用。候场与恢复面试的回答区都用此状态决定是否提供录音入口。面试 SSE 不自行写入通配 `Access-Control-Allow-Origin`，跨域策略由全局 CORS 配置决定。
+
 - Base64 解码前后检查，文件最大 4 MB；仅 WebM、Ogg、M4A/MP4、WAV 容器。禁止播放列表及网络协议输入；格式识别不代替 ffmpeg 解码有效性检查。
 - 转为 16kHz、单声道、16-bit PCM；按解码后的字节数拒绝超过 60 秒音频，不截断后冒充完整答案。ffmpeg 最长 8 秒、输出有上限，超时杀进程并等待退出；各路径清理独立临时目录。
 - 同用户一次一个请求、每分钟最多 8 次；每个服务进程最多 4 个并发。限流为内存级，重启会重置，多实例需在网关或共享存储增加总量限制，不声称已具备集群配额。

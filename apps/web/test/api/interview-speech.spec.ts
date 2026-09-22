@@ -1,7 +1,14 @@
 import { describe, it, expect, vi } from 'vitest'
-const http = vi.hoisted(() => ({ post: vi.fn() }))
+const http = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
 vi.mock('@/lib/request', () => ({ default: http }))
-import { audioToBase64, transcribeInterviewAudio, speechFailureMessage } from '@/api/interview-speech'
+import { audioToBase64, isInterviewSpeechConfigured, transcribeInterviewAudio, speechFailureMessage } from '@/api/interview-speech'
+
+it('uses the authenticated request client to check speech configuration', async () => {
+  http.get.mockResolvedValueOnce({ available: true }).mockResolvedValueOnce({ available: false })
+  await expect(isInterviewSpeechConfigured()).resolves.toBe(true)
+  await expect(isInterviewSpeechConfigured()).resolves.toBe(false)
+  expect(http.get).toHaveBeenCalledWith('/interview/speech/status', { signal: undefined })
+})
 
 describe('speech upload boundary', () => {
   it('awaits FileReader and passes cancellation into the shared HTTP client', async () => {

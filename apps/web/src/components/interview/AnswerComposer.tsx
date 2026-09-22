@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState } from 'react'
 import Icon from '@/components/ui/Icon'
 import { InterviewRecorder, RECORDING_LIMIT_SECONDS, recordingError } from '@/lib/interview-recorder'
-import { transcribeInterviewAudio, speechFailureMessage } from '@/api/interview-speech'
+import { isInterviewSpeechConfigured, transcribeInterviewAudio, speechFailureMessage } from '@/api/interview-speech'
 
 type VoiceState = 'idle' | 'requesting' | 'recording' | 'transcribing' | 'ready' | 'error'
 interface Props { initialMode?: 'voice' | 'text'; value: string; onChange: (value: string) => void; onSend: (value: string) => void; disabled: boolean; onBeforeRecord: () => void }
 export default function AnswerComposer({ value, onChange, onSend, disabled, onBeforeRecord, initialMode = 'voice' }: Props) {
   const [mode, setMode] = useState<'voice' | 'text'>(initialMode)
+  const [speechStatus, setSpeechStatus] = useState<'checking' | 'ready' | 'unavailable'>('checking')
   const [state, setState] = useState<VoiceState>('idle')
   const [error, setError] = useState('')
   const [level, setLevel] = useState(0)
@@ -23,11 +24,27 @@ export default function AnswerComposer({ value, onChange, onSend, disabled, onBe
   const changeRef = useRef(onChange)
   valueRef.current = value; changeRef.current = onChange
   const busy = ['requesting', 'recording', 'transcribing'].includes(state)
+  const effectiveMode = speechStatus === 'ready' ? mode : 'text'
   const cancel = () => {
     generation.current++; recorder.current?.cancel(); recorder.current = null
     request.current?.abort(); request.current = null; busyRef.current = false
   }
   useEffect(() => () => { generation.current++; recorder.current?.cancel(); request.current?.abort() }, [])
+  useEffect(() => {
+    const controller = new AbortController()
+    void isInterviewSpeechConfigured(controller.signal)
+      .then(available => {
+        if (controller.signal.aborted) return
+        setSpeechStatus(available ? 'ready' : 'unavailable')
+        if (!available) setMode('text')
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return
+        setSpeechStatus('unavailable')
+        setMode('text')
+      })
+    return () => controller.abort()
+  }, [])
   useEffect(() => {
     if (!disabled) return
     generation.current++; recorder.current?.cancel(); recorder.current = null
@@ -61,7 +78,7 @@ export default function AnswerComposer({ value, onChange, onSend, disabled, onBe
     } finally { if (request.current === controller) request.current = null }
   }
   const start = async () => {
-    if (disabled || busyRef.current) return
+    if (disabled || busyRef.current || speechStatus !== 'ready') return
     busyRef.current = true
     const id = ++generation.current
     setError(''); setBlob(null); setSeconds(0); setLevel(0); setState('requesting')
@@ -82,7 +99,7 @@ export default function AnswerComposer({ value, onChange, onSend, disabled, onBe
     }
   }
   const switchMode = (next: 'voice' | 'text') => {
-    if (mode === next) return
+    if (mode === next || (next === 'voice' && speechStatus !== 'ready')) return
     cancel(); setMode(next); setState('idle'); setError('')
   }
   const send = () => {
@@ -92,12 +109,13 @@ export default function AnswerComposer({ value, onChange, onSend, disabled, onBe
   return <section aria-label="本题回答" className="shrink-0 border-t border-line bg-white p-4 sm:px-6">
     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
       <div role="group" aria-label="回答方式" className="flex gap-2">
-        <button aria-pressed={mode === 'voice'} onClick={() => switchMode('voice')} className={`inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm ${mode === 'voice' ? 'bg-ink text-white' : 'text-muted hover:bg-paper'}`}><Icon name="i-heroicons-microphone" className="h-4 w-4" />语音回答</button>
-        <button aria-pressed={mode === 'text'} onClick={() => switchMode('text')} className={`min-h-11 rounded-lg px-3 text-sm ${mode === 'text' ? 'bg-ink text-white' : 'text-muted hover:bg-paper'}`}>文字回答</button>
+        <button aria-pressed={effectiveMode === 'voice'} disabled={speechStatus !== 'ready'} onClick={() => switchMode('voice')} className={`inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50 ${effectiveMode === 'voice' ? 'bg-ink text-white' : 'text-muted hover:bg-paper'}`}><Icon name="i-heroicons-microphone" className="h-4 w-4" />语音回答</button>
+        <button aria-pressed={effectiveMode === 'text'} onClick={() => switchMode('text')} className={`min-h-11 rounded-lg px-3 text-sm ${effectiveMode === 'text' ? 'bg-ink text-white' : 'text-muted hover:bg-paper'}`}>文字回答</button>
       </div>
-      {mode === 'voice' && <p className="text-xs text-muted">录音 <span aria-hidden="true">→</span> 校对 <span aria-hidden="true">→</span> 发送</p>}
+      {effectiveMode === 'voice' && <p className="text-xs text-muted">录音 <span aria-hidden="true">→</span> 校对 <span aria-hidden="true">→</span> 发送</p>}
     </div>
-    {mode === 'voice' && <div className="mb-3 rounded-xl border border-line bg-paper p-3">
+    {speechStatus !== 'ready' && <p role="status" className="mb-3 text-xs text-muted">{speechStatus === 'checking' ? '正在确认语音识别服务…' : '语音识别暂不可用，可直接输入回答。'}</p>}
+    {effectiveMode === 'voice' && <div className="mb-3 rounded-xl border border-line bg-paper p-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <div aria-hidden="true" className="flex h-10 w-12 items-center justify-center gap-1 text-primary-700">
@@ -113,10 +131,10 @@ export default function AnswerComposer({ value, onChange, onSend, disabled, onBe
       {audioUrl && !busy && <audio aria-label="本段录音回听" src={audioUrl} controls className="mt-3 h-10 w-full" />}
     </div>}
     {error && <div role="alert" className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}{blob && <button disabled={busy || disabled} className="ml-2 min-h-11 underline" onClick={() => { if (busyRef.current) return; busyRef.current = true; void transcribe(blob, ++generation.current) }}>重试转写</button>}</div>}
-    <label htmlFor="interview-answer" className="mb-2 block text-sm font-medium text-ink">{mode === 'voice' ? '回答文字 · 可编辑' : '你的回答'}</label>
+    <label htmlFor="interview-answer" className="mb-2 block text-sm font-medium text-ink">{effectiveMode === 'voice' ? '回答文字 · 可编辑' : '你的回答'}</label>
     <textarea id="interview-answer" value={value} onChange={event => onChange(event.target.value)} disabled={disabled || busy} rows={3}
-      onKeyDown={event => { if (mode === 'text' && event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); send() } }}
+      onKeyDown={event => { if (effectiveMode === 'text' && event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); send() } }}
       placeholder={disabled ? '等待面试官提问后回答' : '说完后校对，也可以直接输入…'} className="w-full resize-y rounded-xl border border-line bg-white px-3 py-2 text-base text-ink disabled:bg-paper" />
-    <div className="mt-2 flex items-center justify-between gap-3"><span className="text-xs text-muted">{mode === 'voice' ? '确认发送后，面试官才会收到回答' : 'Enter 发送 · Shift+Enter 换行'}</span><button className="button-primary shrink-0" disabled={disabled || busy || !value.trim()} onClick={send}>发送回答<Icon name="i-heroicons-paper-airplane" className="h-4 w-4" /></button></div>
+    <div className="mt-2 flex items-center justify-between gap-3"><span className="text-xs text-muted">{effectiveMode === 'voice' ? '确认发送后，面试官才会收到回答' : 'Enter 发送 · Shift+Enter 换行'}</span><button className="button-primary shrink-0" disabled={disabled || busy || !value.trim()} onClick={send}>发送回答<Icon name="i-heroicons-paper-airplane" className="h-4 w-4" /></button></div>
   </section>
 }
