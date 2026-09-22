@@ -26,7 +26,7 @@ async function stream(path, token, body) {
   const token = login.token, userId = login.user._id, objectId = new mongoose.Types.ObjectId(userId);
   assert.equal((await json('/interview/continue-conversation', null, { sessionId: randomUUID(), question: '测试' })).status, 401);
   assert.equal((await json('/interview/continue-conversation', token, { sessionId: randomUUID(), question: '测试' })).status, 404);
-  const quizInput = { positionName: '前端工程师', jd: '这是合成岗位描述，仅用于独立本地数据库的接口测试，不会发送给外部模型。负责组件开发、测试、可访问性、错误处理以及团队协作。', resumeContent: '合成测试经历' };
+  const quizInput = { requestId: randomUUID(), positionName: '前端工程师', jd: '这是合成岗位描述，仅用于独立本地数据库的接口测试，不会发送给外部模型。负责组件开发、测试、可访问性、错误处理以及团队协作。', resumeContent: '合成测试经历' };
   for (const type of ['special', 'behavior']) {
     const events = await stream('/interview/mock/start', token, { interviewType: type, positionName: '前端', resumeContent: '合成经历' });
     assert.equal(events.filter(e => e.type === 'error').length, 1);
@@ -45,8 +45,9 @@ async function stream(path, token, body) {
   assert.equal((await json('/user/info', token)).data.resumeRemainingCount, 0);
 
   await mongoose.connection.collection('users').updateOne({ _id: objectId }, { $set: { maiCoinBalance: 20 } });
-  const exchanges = await Promise.all(Array.from({ length: 8 }, () => json('/interview/exchange-package', token, { packageType: 'resume' })));
-  assert.equal(exchanges.filter(r => r.code === 200).length, 1);
+  const exchangeId = randomUUID();
+  const exchanges = await Promise.all(Array.from({ length: 8 }, () => json('/interview/exchange-package', token, { packageType: 'resume', requestId: exchangeId })));
+  assert.equal(exchanges.filter(r => r.code === 200).length, 8);
   const after = (await json('/user/info', token)).data;
   assert.equal(after.maiCoinBalance, 0);
   assert.equal(after.resumeRemainingCount, 1);

@@ -122,6 +122,18 @@ export class ConsumptionRecord {
   @Prop()
   requestId?: string; // 请求ID（用于幂等性）
 
+  @Prop({ select: false })
+  quizInputHash?: string;
+
+  @Prop({ enum: ['preparing', 'generating', 'refunding'] })
+  quizPhase?: 'preparing' | 'generating' | 'refunding';
+
+  @Prop({ select: false })
+  quizLeaseToken?: string;
+
+  @Prop({ select: false })
+  quizLeaseExpiresAt?: Date;
+
   @Prop()
   userAgent?: string; // 用户代理
 

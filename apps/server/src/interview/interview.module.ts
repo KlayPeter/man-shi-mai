@@ -6,6 +6,7 @@ import { BaiduSpeechService } from './services/baidu-speech.service';
 import { InterviewSpeechService } from './services/interview-speech.service';
 import { Module } from '@nestjs/common';
 import { InterviewReportService } from './services/interview-report.service';
+import { InterviewQuizService } from './services/interview-quiz.service';
 import { InterviewController } from './interview.controller';
 import { InterviewService } from './services/interview.service';
 import { InterviewAIService } from './services/interview-ai.service';
@@ -57,6 +58,7 @@ import {
     BaiduSpeechService,
     InterviewSpeechService,
     InterviewReportService,
+    InterviewQuizService,
     InterviewTurnService,
     InterviewStartService,
     InterviewService,

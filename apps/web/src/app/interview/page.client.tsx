@@ -21,6 +21,45 @@ import { useSpeechSynthesis } from '@/hooks/useSpeechSynthesis'
 
 type ServiceType = 'resume' | 'special' | 'behavior'
 type StepType = 'input' | 'progress' | 'interview' | 'complete' | 'error'
+type ResumeQuizRequest = {
+  requestId: string
+  resumeId: string | null
+  resumeContent: string
+  company: string
+  positionName: string
+  minSalary: number
+  maxSalary: number
+  jd: string
+}
+
+const readStoredOwnerId = (): string | null => {
+  try {
+    const value = JSON.parse(localStorage.getItem('userInfo') || '{}')._id
+    return typeof value === 'string' && value ? value : null
+  } catch { return null }
+}
+
+const readPendingResumeQuiz = (): ResumeQuizRequest | null => {
+  try {
+    const active = JSON.parse(localStorage.getItem('active-interview') || 'null')
+    const ownerId = readStoredOwnerId()
+    const request = active?.quizRequest
+    if (active?.serviceType !== 'resume' || !ownerId || active.quizOwnerId !== ownerId || !request ||
+      typeof request.requestId !== 'string' ||
+      typeof request.positionName !== 'string' ||
+      typeof request.jd !== 'string') return null
+    return request as ResumeQuizRequest
+  } catch { return null }
+}
+
+const hasLegacyResumeQuiz = (): boolean => {
+  try {
+    const active = JSON.parse(localStorage.getItem('active-interview') || 'null')
+    return active?.serviceType === 'resume' &&
+      typeof active.sessionId === 'string' && active.sessionId.startsWith('resume-quiz-') &&
+      !active.quizRequest
+  } catch { return false }
+}
 
 export default function InterviewPageContent() {
   const router = useRouter()
@@ -50,6 +89,7 @@ export default function InterviewPageContent() {
   const [maxSalary, setMaxSalary] = useState(String(interviewStore.selectedPosition?.maxSalary || ''))
   const [jd, setJd] = useState(interviewStore.selectedPosition?.jd || '')
   const sseRef = useRef<{ abort: () => void } | null>(null)
+  const resumeQuizInFlight = useRef(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [showRestoreModal, setShowRestoreModal] = useState(false)
 
@@ -114,15 +154,6 @@ export default function InterviewPageContent() {
     router.push(`/interview?${params.toString()}`)
   }
 
-  // 生成兼容的 UUID
-  const generateUUID = () => {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-      const r = (Math.random() * 16) | 0
-      const v = c === 'x' ? r : (r & 0x3) | 0x8
-      return v.toString(16)
-    })
-  }
-
   const refreshUserInfo = async () => {
     try {
       const userInfo: any = await getUserInfoAPI()
@@ -168,86 +199,23 @@ export default function InterviewPageContent() {
           const activeInterview = JSON.parse(activeInterviewStr)
           const { sessionId: sid, resultId: rid, serviceType: sType } = activeInterview
 
-          // 处理押题恢复
-          if (sid && sid.startsWith('resume-quiz-') && sType === 'resume' && serviceType === 'resume') {
-            const timeDiff = Date.now() - (activeInterview.timestamp || 0)
-            const isRecent = timeDiff < 10 * 60 * 1000 // 10分钟内
-
-            if (isRecent) {
-              // 恢复岗位信息到 store - 直接调用 setter 而不是 rehydrate
-              if (activeInterview.positionData) {
-                const { company, positionName, minSalary, maxSalary, jd } = activeInterview.positionData
-                const validMinSalary = Math.min(9999, Math.max(0, Number(minSalary) || 0))
-                const validMaxSalary = Math.min(9999, Math.max(0, Number(maxSalary) || 0))
-
-                // 直接调用 setter 设置数据
-                interviewStore.setSelectedPosition({
-                  company,
-                  positionName,
-                  minSalary: validMinSalary,
-                  maxSalary: validMaxSalary,
-                  jd
-                })
-              }
-
-              if (activeInterview.resumeId) {
-                interviewStore.setResumeId(activeInterview.resumeId)
-              }
-
-              // 注意：不要在这里清除 active-interview，等押题成功后再清除
-              // 这样如果再次刷新，还能继续恢复
-
-              toast({
-                title: '检测到中断的押题生成',
-                description: '正在自动重新生成...',
-                color: 'blue'
-              })
-
-              // 延迟执行以确保 store 更新完成
-              setTimeout(() => {
-                // 验证岗位数据是否已恢复
-                const currentState = useInterviewStore.getState()
-
-                if (!currentState.selectedPosition?.positionName) {
-                  toast({
-                    title: '恢复失败',
-                    description: '岗位信息丢失，请重新选择岗位',
-                    color: 'red'
-                  })
-                  router.push('/interview/start')
-                  return
-                }
-
-                if (step !== 'progress') {
-                  updateQuery({ step: 'progress' })
-                }
-                // 触发重新生成，直接传递恢复的数据
-                setTimeout(() => {
-                  if (activeInterview.positionData) {
-                    const { company, positionName, minSalary, maxSalary, jd } = activeInterview.positionData
-                    startResumeQuiz({
-                      company,
-                      positionName,
-                      minSalary: Number(minSalary),
-                      maxSalary: Number(maxSalary),
-                      jd,
-                      resumeId: activeInterview.resumeId
-                    })
-                  } else {
-                    startResumeQuiz()
-                  }
-                }, 500)
-              }, 500)
-              return
-            } else {
-              // 超过10分钟，认为已失败
+          // 押题恢复必须重放同一份请求快照；断线不能创建新的扣次请求。
+          if (sid?.startsWith('resume-quiz-') && sType === 'resume' && serviceType === 'resume') {
+            if (activeInterview.quizOwnerId && activeInterview.quizOwnerId !== readStoredOwnerId()) {
               clearActiveInterview()
-              toast({
-                title: '押题生成已超时',
-                description: '请重新开始押题',
-                color: 'yellow'
-              })
+              updateQuery({ step: 'input' })
+              return
             }
+            const pending = readPendingResumeQuiz()
+            if (pending) {
+              toast({ title: '正在确认押题结果', description: '将使用原请求继续，不会重复扣次', color: 'blue' })
+              if (step !== 'progress') updateQuery({ step: 'progress' })
+              startResumeQuiz(pending)
+            } else {
+              toast({ title: '旧押题请求需要确认', description: '原请求参数不完整，请先核对练习记录', color: 'yellow' })
+              updateQuery({ step: 'error' })
+            }
+            return
           }
 
           // 处理面试恢复
@@ -449,14 +417,9 @@ export default function InterviewPageContent() {
     }
   }
 
-  const startResumeQuiz = async (overrideData?: {
-    company?: string
-    positionName?: string
-    minSalary?: number
-    maxSalary?: number
-    jd?: string
-    resumeId?: string | null
-  }) => {
+  const startResumeQuiz = async (overrideData?: Partial<ResumeQuizRequest>) => {
+    if (resumeQuizInFlight.current) return
+    resumeQuizInFlight.current = true
     // 优先使用传入的参数，其次使用 local state，最后使用 store
     const currentCompany = overrideData?.company || company || interviewStore.selectedPosition?.company || '未指定公司'
     const currentPositionName = overrideData?.positionName || positionName || interviewStore.selectedPosition?.positionName || ''
@@ -481,7 +444,7 @@ export default function InterviewPageContent() {
     const validMinSalary = Math.min(9999, Math.max(0, Number(currentMinSalary) || 0))
     const validMaxSalary = Math.min(9999, Math.max(0, Number(currentMaxSalary) || 0))
 
-    const params = {
+    const freshParams: ResumeQuizRequest = {
       resumeId: currentResumeId,
       resumeContent: interviewStore.resumeText || resumeText,
       company: currentCompany,
@@ -489,21 +452,26 @@ export default function InterviewPageContent() {
       minSalary: validMinSalary,
       maxSalary: validMaxSalary,
       jd: currentJd,
-      requestId: generateUUID()
+      requestId: crypto.randomUUID()
     }
+    const params = readPendingResumeQuiz() || (overrideData?.requestId ? overrideData as ResumeQuizRequest : freshParams)
 
     // 保存押题进行状态，使用实际的数据而不是从 store 读取
     saveActiveInterview('resume-quiz-' + params.requestId, 'resume-quiz', serviceType, {
       positionData: {
-        company: currentCompany,
-        positionName: currentPositionName,
-        minSalary: validMinSalary,
-        maxSalary: validMaxSalary,
-        jd: currentJd
+        company: params.company,
+        positionName: params.positionName,
+        minSalary: params.minSalary,
+        maxSalary: params.maxSalary,
+        jd: params.jd
       },
-      resumeId: currentResumeId
+      resumeId: params.resumeId,
+      quizOwnerId: readStoredOwnerId(),
+      quizRequest: params
     })
 
+    let confirmed = false
+    let receivedError = false
     const connection = ssePost('/interview/resume/quiz/stream', params, {
       callbacks: {
         onMessage: (data) => {
@@ -514,6 +482,12 @@ export default function InterviewPageContent() {
             setProgressSteps(prev => [...prev, step])
           } else if (data.type === 'yati-complete') {
             const rid = data.data?.resultId
+            if (typeof rid !== 'string' || !rid) {
+              receivedError = true
+              updateQuery({ step: 'error' })
+              return
+            }
+            confirmed = true
             setCurrentResultId(rid)
             setPredictionResults((data.data?.questions || []).map((q: any) => ({ ...q, isOpen: true })))
             setPredictionSummary(data.data?.summary || '')
@@ -521,10 +495,10 @@ export default function InterviewPageContent() {
             clearActiveInterview()
             refreshUserInfo() // 刷新用户信息以更新剩余次数
             updateQuery({ step: 'complete', resultId: rid })
-          } else if (data.type === 'complete') {
-            setResumeQuizComplete(true)
           } else if (data.type === 'error') {
-            toast({ title: '押题失败', description: data.error?.message || '网络错误', color: 'red' })
+            receivedError = true
+            if (data.terminal === true) clearActiveInterview()
+            toast({ title: '押题未完成', description: typeof data.error === 'string' ? data.error : '请重试同一次请求', color: 'red' })
             updateQuery({ step: 'error' })
           }
         },
@@ -532,10 +506,13 @@ export default function InterviewPageContent() {
           toast({ title: '押题失败', description: error.message || '网络错误', color: 'red' })
           updateQuery({ step: 'error' })
           setSubmitting(false)
+          resumeQuizInFlight.current = false
           if (timerRef.current) clearInterval(timerRef.current)
         },
         onComplete: () => {
+          if (!confirmed && !receivedError) updateQuery({ step: 'error' })
           setSubmitting(false)
+          resumeQuizInFlight.current = false
           if (timerRef.current) clearInterval(timerRef.current)
         }
       }
@@ -1023,7 +1000,7 @@ export default function InterviewPageContent() {
             <div className="flex items-center justify-between text-xs text-neutral-500">
               <span className="flex items-center gap-1.5">
                 <Icon name="i-heroicons-clock" className="w-3.5 h-3.5" />
-                预计耗时 5 - 7 分钟
+                正在生成，可断线后继续确认
               </span>
               <span className="flex items-center gap-2">
                 <span className="font-mono">已耗时 {formatTime(elapsedTime)}</span>
@@ -1402,12 +1379,16 @@ export default function InterviewPageContent() {
             <Icon name="i-heroicons-exclamation-triangle" className="w-8 h-8 text-red-500" />
           </div>
           <h2 className="text-lg font-bold text-neutral-900 mb-2">处理失败</h2>
-          <p className="text-sm text-neutral-500 mb-6">网络错误或服务异常，请稍后重试</p>
+          <p className="text-sm text-neutral-500 mb-6">
+            {hasLegacyResumeQuiz()
+              ? '旧押题请求缺少可重放的输入，请先核对练习记录；如果未显示结果，请联系支持。'
+              : '押题结果尚未确认时，请使用原请求继续核对，避免重复扣次。'}
+          </p>
           <button
-            onClick={() => updateQuery({ step: 'input' })}
+            onClick={() => hasLegacyResumeQuiz() ? router.push('/history') : readPendingResumeQuiz() ? startResumeQuiz() : updateQuery({ step: 'input' })}
             className="px-6 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-700 transition-colors"
           >
-            重新尝试
+            {hasLegacyResumeQuiz() ? '查看练习记录' : readPendingResumeQuiz() ? '继续确认原请求' : '返回重新开始'}
           </button>
         </div>
       </div>

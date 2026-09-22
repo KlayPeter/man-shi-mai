@@ -31,7 +31,7 @@ export default function InterviewConfirmModal({
         },
         {
           icon: 'i-heroicons-clock',
-          text: '预计生成时长：<span class="text-blue-600 font-semibold"> 5 - 7 分钟</span>。'
+          text: '生成需要一些时间；如果连接中断，<span class="text-blue-600 font-semibold">可继续确认同一次请求</span>。'
         },
         {
           icon: 'i-heroicons-credit-card',

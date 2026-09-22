@@ -158,7 +158,6 @@ export class InterviewAIService {
 
       // 5. 调用 AI
       const rawResult = await chain.invoke(params);
-      this.logger.log(`🔍 [押题部分] 原始结果: ${rawResult}`);
 
       // 6. 验证结果
       // 虽然我们还没有 Zod 验证（下节课才加），但我们可以做基本检查

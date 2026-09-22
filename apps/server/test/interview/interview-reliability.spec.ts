@@ -5,10 +5,11 @@ import { Test } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { ConfigService } from '@nestjs/config';
-import { lastValueFrom, timeout, toArray } from 'rxjs';
+import { lastValueFrom, of, timeout, toArray } from 'rxjs';
 import { SessionManager } from '../../src/ai/services/session.manager';
 import { InterviewReportService } from '../../src/interview/services/interview-report.service';
 import { InterviewService } from '../../src/interview/services/interview.service';
+import { InterviewQuizService } from '../../src/interview/services/interview-quiz.service';
 import { ResumeAnalysisService } from '../../src/interview/services/resume-analysis.service';
 import { ConversationContinuationService } from '../../src/interview/services/conversation-continuation.service';
 import { DocumentParserService } from '../../src/interview/services/document-parser.service';
@@ -37,6 +38,7 @@ describe('interview reliability', () => {
   const quota = { apply: jest.fn() };
   const transactions = { updateOne: jest.fn(), exists: jest.fn() };
   const continuation = { continue: jest.fn() };
+  const quizService = { start: jest.fn() };
 
   beforeEach(async () => {
     jest.resetAllMocks();
@@ -44,6 +46,7 @@ describe('interview reliability', () => {
       providers: [
         InterviewService,
         { provide: InterviewStartService, useValue: starts },
+        { provide: InterviewQuizService, useValue: quizService },
         { provide: QuotaLedgerService, useValue: quota },
         SessionManager,
         ...[
@@ -70,18 +73,29 @@ describe('interview reliability', () => {
     sessions = module.get(SessionManager);
   });
 
-  it('never credits a resume request rejected before deduction', async () => {
-    user.findOneAndUpdate.mockResolvedValue(null);
+  it('delegates resume quiz to the durable quiz service without direct debit', async () => {
+    const dto = {
+      requestId: '4f387521-e4c9-46da-ab7f-da395e70254f',
+      positionName: '前端',
+      jd: '岗位描述',
+      resumeContent: '合成经历',
+    };
+    quizService.start.mockReturnValue(
+      of({ type: 'yati-complete', progress: 100, data: { resultId: 'saved' } }),
+    );
     const events = await lastValueFrom(
       service
-        .generateResumeQuizWithProgress(userId, {
-          positionName: '前端',
-          jd: '岗位描述',
-        })
+        .generateResumeQuizWithProgress(userId, dto)
         .pipe(timeout(1000), toArray()),
     );
-    expect(events.map((event) => event.type)).toEqual(['error']);
-    expect(user.findByIdAndUpdate).not.toHaveBeenCalled();
+    expect(events[0].data).toEqual({ resultId: 'saved' });
+    expect(quizService.start).toHaveBeenCalledWith(
+      userId,
+      dto,
+      expect.any(Function),
+    );
+    expect(await quizService.start.mock.calls[0][2]()).toBe('合成经历');
+    expect(user.findOneAndUpdate).not.toHaveBeenCalled();
   });
 
   it('delegates opening to the durable start service without another debit', () => {
@@ -96,51 +110,6 @@ describe('interview reliability', () => {
       dto,
       expect.any(Function),
     );
-    expect(user.findOneAndUpdate).not.toHaveBeenCalled();
-  });
-
-  it('does not refund another request that is still pending', async () => {
-    consumption.findOne.mockResolvedValue({ status: 'pending' });
-    const events = await lastValueFrom(
-      service
-        .generateResumeQuizWithProgress(userId, {
-          requestId: 'request-1',
-          positionName: '前端',
-          jd: '岗位描述',
-        })
-        .pipe(timeout(1000), toArray()),
-    );
-    expect(events[0].type).toBe('error');
-    expect(user.findOneAndUpdate).not.toHaveBeenCalled();
-    expect(user.findByIdAndUpdate).not.toHaveBeenCalled();
-  });
-
-  it('sends cached results and closes the stream without deduction', async () => {
-    consumption.findOne.mockResolvedValue({
-      status: 'success',
-      resultId: 'cached',
-      recordId: 'paid',
-    });
-    quiz.findOne.mockResolvedValue({
-      resultId: 'cached',
-      questions: [{ question: '原问题' }],
-      summary: '原总结',
-    });
-    user.findById.mockResolvedValue({ resumeRemainingCount: 2 });
-    const events = await lastValueFrom(
-      service
-        .generateResumeQuizWithProgress(userId, {
-          requestId: 'request-1',
-          positionName: '前端',
-          jd: '岗位描述',
-        })
-        .pipe(timeout(1000), toArray()),
-    );
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({
-      type: 'yati-complete',
-      data: { resultId: 'cached', isFromCache: true },
-    });
     expect(user.findOneAndUpdate).not.toHaveBeenCalled();
   });
 

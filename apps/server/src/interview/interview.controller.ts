@@ -116,12 +116,12 @@ export class InterviewController {
           // 发送 SSE 事件
           res.write(`data: ${JSON.stringify(event)}\n\n`);
         },
-        error: (error) => {
+        error: () => {
           // 发送错误事件
           res.write(
             `data: ${JSON.stringify({
               type: 'error',
-              error: error.message,
+              error: '押题状态尚未确认，请重试同一次请求',
             })}\n\n`,
           );
           res.end();

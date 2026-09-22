@@ -35,6 +35,14 @@ export class QuotaLedgerService {
     private readonly operations: Model<QuotaOperationDocument>,
   ) {}
 
+  async getBalance(userId: string) {
+    const user = await this.users
+      .findById(userId)
+      .select('resumeRemainingCount');
+    if (!user) throw new NotFoundException('用户不存在');
+    return { resumeRemainingCount: user.resumeRemainingCount };
+  }
+
   /**
    * 单个账户文档内同时更新所有权益、单调版本和待归档回执。
    * 回执归档完成前禁止下一笔操作覆盖；其他请求可协助归档。

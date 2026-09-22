@@ -89,13 +89,10 @@ export class ResumeQuizDto {
   resumeContent?: string;
 
   @ApiProperty({
-    description: '请求ID（用于幂等性，避免重复提交）',
-    example: 'uuid-xxx-xxx',
-    required: false,
+    description: '本次押题的 UUID；断线重试必须复用',
   })
   @IsUUID('4', { message: '请求ID格式不正确' })
-  @IsOptional()
-  requestId?: string;
+  requestId: string;
 
   @ApiProperty({
     description: '简历的线上地址',
