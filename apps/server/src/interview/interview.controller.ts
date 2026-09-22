@@ -518,6 +518,7 @@ export class InterviewController {
     const result = await this.interviewService.exchangePackage(
       req.user.userId,
       dto.packageType,
+      dto.requestId,
     );
 
     return ResponseUtil.success(result, result.message);

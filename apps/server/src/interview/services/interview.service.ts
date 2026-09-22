@@ -6,6 +6,7 @@ import {
 // src/interview/services/interview.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { QuotaLedgerService } from '../../user/quota-ledger.service';
 import { SessionManager } from '../../ai/services/session.manager';
 import { ResumeAnalysisService } from './resume-analysis.service';
 import { ConversationContinuationService } from './conversation-continuation.service';
@@ -96,6 +97,7 @@ export class InterviewService {
     private aiService: InterviewAIService,
     private turns: InterviewTurnService,
     private starts: InterviewStartService,
+    private quota: QuotaLedgerService,
     private reports: InterviewReportService,
     @InjectModel(ConsumptionRecord.name)
     private consumptionRecordModel: Model<ConsumptionRecordDocument>,
@@ -1057,6 +1059,7 @@ export class InterviewService {
   async exchangePackage(
     userId: string,
     packageType: 'resume' | 'special' | 'behavior',
+    requestId: string,
   ): Promise<any> {
     const EXCHANGE_COST = 20; // 每次兑换消耗 20 小麦币
     const EXCHANGE_COUNT = 1; // 每次兑换增加 1 次
@@ -1065,20 +1068,10 @@ export class InterviewService {
       `🎁 开始兑换套餐: userId=${userId}, packageType=${packageType}`,
     );
 
-    // 1. 检查用户小麦币余额
-    const user = await this.userModel.findById(userId);
-    if (!user) {
-      throw new BadRequestException('用户不存在');
-    }
-
-    if (user.maiCoinBalance < EXCHANGE_COST) {
-      throw new BadRequestException(
-        `小麦币余额不足，需要 ${EXCHANGE_COST} 小麦币，当前余额 ${user.maiCoinBalance}`,
-      );
-    }
-
-    // 2. 根据兑换类型确定要增加的次数字段
-    let countField: string;
+    let countField:
+      | 'resumeRemainingCount'
+      | 'specialRemainingCount'
+      | 'behaviorRemainingCount';
     let packageName: string;
 
     switch (packageType) {
@@ -1098,64 +1091,55 @@ export class InterviewService {
         throw new BadRequestException('无效的兑换类型');
     }
 
-    // 3. 执行兑换（原子操作）
-    const updateData = {
-      $inc: {
-        maiCoinBalance: -EXCHANGE_COST, // 扣除小麦币
-        [countField]: EXCHANGE_COUNT, // 增加对应次数
-      },
-    };
-
-    const updatedUser = await this.userModel.findOneAndUpdate(
-      { _id: userId, maiCoinBalance: { $gte: EXCHANGE_COST } },
-      updateData,
-      { new: true },
+    // 同一账户文档中扣币和加次数，重放只归档旧回执，不重复应用。
+    const { operationId } = await this.quota.apply(
+      userId,
+      'package-exchange',
+      requestId,
+      { maiCoinBalance: -EXCHANGE_COST, [countField]: EXCHANGE_COUNT },
     );
-
-    if (!updatedUser) {
-      throw new BadRequestException('小麦币余额不足，兑换未扣款');
-    }
-
-    this.logger.log(
-      `✅ 兑换成功: userId=${userId}, packageType=${packageType}, ` +
-        `小麦币余额=${updatedUser.maiCoinBalance}, ` +
-        `${countField}=${updatedUser[countField]}`,
-    );
-
-    // 4. 创建交易记录（异步，不影响返回）
-    const outTradeNo = `MAI${Date.now()}${Math.floor(Math.random() * 1000)
-      .toString()
-      .padStart(3, '0')}`;
-
+    // 交易记录可补写：账本成功但此处故障时，同一 requestId 重试仍只兑换一次。
     try {
-      await this.userTransactionModel.create({
-        user: new Types.ObjectId(userId),
-        userIdentifier: userId,
-        type: UserTransactionType.EXPENSE,
-        amount: EXCHANGE_COST,
-        currency: 'MAI', // 小麦币
-        description: `兑换${packageName}`,
-        planName: '小麦币兑换',
-        source: 'MAI_exchange',
-        metadata: {
-          packageType,
-          packageName,
-          exchangeCount: EXCHANGE_COUNT,
+      await this.userTransactionModel.updateOne(
+        { relatedOrderId: operationId },
+        {
+          $setOnInsert: {
+            relatedOrderId: operationId,
+            user: new Types.ObjectId(userId),
+            userIdentifier: userId,
+            type: UserTransactionType.EXPENSE,
+            amount: EXCHANGE_COST,
+            currency: 'MAI',
+            description: `兑换${packageName}`,
+            planName: '小麦币兑换',
+            source: 'MAI_exchange',
+            metadata: {
+              packageType,
+              packageName,
+              exchangeCount: EXCHANGE_COUNT,
+            },
+          },
         },
-        payData: {
-          outTradeNo,
-          paidAt: new Date(),
-          channel: 'MAI',
-        },
-      });
-
-      this.logger.log(`💾 交易记录已创建: outTradeNo=${outTradeNo}`);
-    } catch (error) {
-      // 记录失败不影响兑换结果
-      this.logger.error(`❌ 创建交易记录失败: ${error.message}`);
+        { upsert: true, writeConcern: { w: 'majority' } },
+      );
+    } catch (error: unknown) {
+      if (
+        !(
+          error &&
+          typeof error === 'object' &&
+          'code' in error &&
+          error.code === 11000 &&
+          (await this.userTransactionModel.exists({
+            relatedOrderId: operationId,
+            userIdentifier: userId,
+          }))
+        )
+      )
+        throw error;
     }
 
-    // 5. 返回兑换结果（小麦币保留两位小数）
+    const updatedUser = await this.userModel.findById(userId);
+    if (!updatedUser) throw new BadRequestException('用户不存在');
     return {
       success: true,
       message: `兑换成功！您已成功兑换 1 次${packageName}`,
@@ -1165,6 +1149,7 @@ export class InterviewService {
       packageName,
       exchangeCost: EXCHANGE_COST,
       exchangeCount: EXCHANGE_COUNT,
+      requestId,
     };
   }
 

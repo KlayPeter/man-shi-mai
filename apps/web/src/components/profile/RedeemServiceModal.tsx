@@ -1,20 +1,34 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Icon from '@/components/ui/Icon'
 import { useUserStore } from '@/stores/userStore'
 import { toast } from '@/stores/toastStore'
 import request from '@/lib/request'
 
 const REDEEM_COST = 20
+type ServiceId = 'resume' | 'special' | 'behavior'
+type PendingExchange = { requestId: string; packageType: ServiceId }
+const exchangeKey = (userId: string) => `pending-mai-exchange:${userId}`
+const isServiceId = (value: unknown): value is ServiceId => value === 'resume' || value === 'special' || value === 'behavior'
+const readPendingExchange = (userId: string): PendingExchange | null => {
+  try {
+    const raw = localStorage.getItem(exchangeKey(userId))
+    if (!raw) return null
+    const value: unknown = JSON.parse(raw)
+    if (value && typeof value === 'object' && 'requestId' in value && 'packageType' in value &&
+      typeof value.requestId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.requestId) && isServiceId(value.packageType)) return value as PendingExchange
+  } catch { /* A broken local record must not create another debit automatically. */ }
+  return null
+}
 
-const services = [
+const services: { id: ServiceId; title: string; badge: string; description: string; points: string[]; icon: string; bgClass: string; iconClass: string; activeBgClass: string; activeIconClass: string; badgeClass: string }[] = [
   {
     id: 'resume',
     title: '面试押题',
-    badge: '3-5分钟',
-    description: '根据岗位JD和简历，精准预测高频面试题，命中率80%+',
-    points: ['AI精准分析岗位要求', '生成专属题库', '覆盖技术+行为题'],
+    badge: '岗位分析',
+    description: '结合岗位要求与经历生成练习题，不承诺真实面试命中率。',
+    points: ['分析岗位要求', '生成练习题', '查看回答思路'],
     icon: 'i-heroicons-document-text',
     bgClass: 'bg-blue-50', iconClass: 'text-blue-600',
     activeBgClass: 'bg-blue-100', activeIconClass: 'text-blue-700',
@@ -23,9 +37,9 @@ const services = [
   {
     id: 'special',
     title: '专项面试模拟',
-    badge: '约1小时',
-    description: '1v1 AI面试官深度模拟，支持语音/文字多模态作答',
-    points: ['真实面试场景模拟', '多轮追问与反问', '结构化评分报告'],
+    badge: '15–45 分钟',
+    description: '1v1 专业能力模拟，支持语音或文字回答。',
+    points: ['自选练习强度', '多轮追问', '逐题复盘'],
     icon: 'i-heroicons-bolt',
     bgClass: 'bg-emerald-50', iconClass: 'text-emerald-600',
     activeBgClass: 'bg-emerald-100', activeIconClass: 'text-emerald-700',
@@ -34,9 +48,9 @@ const services = [
   {
     id: 'behavior',
     title: '行测+HR面试',
-    badge: '约45分钟',
-    description: '综合素质评估，覆盖行测逻辑与HR软技能双维度',
-    points: ['行测逻辑题训练', 'HR软技能评估', '综合能力报告'],
+    badge: '15–45 分钟',
+    description: '练习协作、判断和表达，支持语音或文字回答。',
+    points: ['自选练习强度', '行为问题追问', '逐题复盘'],
     icon: 'i-heroicons-user-group',
     bgClass: 'bg-purple-50', iconClass: 'text-purple-600',
     activeBgClass: 'bg-purple-100', activeIconClass: 'text-purple-700',
@@ -53,40 +67,68 @@ interface Props {
 
 export default function RedeemServiceModal({ open, onClose, onRedeemSuccess, onGoToRecharge }: Props) {
   const userStore = useUserStore()
-  const [selectedService, setSelectedService] = useState<string | null>(null)
+  const [selectedService, setSelectedService] = useState<ServiceId | null>(null)
   const [isRedeeming, setIsRedeeming] = useState(false)
+  const [pending, setPending] = useState<PendingExchange | null>(null)
+  const [exchangeError, setExchangeError] = useState('')
+  const redeemingRef = useRef(false)
+  const userId = userStore.userInfo?._id || ''
 
   const balance = userStore.userInfo?.maiCoinBalance || 0
   const canRedeem = balance >= REDEEM_COST
   const redeemableCount = Math.floor(balance / REDEEM_COST)
 
   useEffect(() => {
-    if (open) { setSelectedService(null); setIsRedeeming(false) }
-  }, [open])
+    if (open && userId) {
+      const saved = readPendingExchange(userId)
+      setPending(saved)
+      setSelectedService(saved?.packageType || null)
+      setExchangeError('')
+    }
+  }, [open, userId])
 
   const handleRedeem = async () => {
-    if (!selectedService || !canRedeem) return
-    setIsRedeeming(true)
+    if (redeemingRef.current || !selectedService || (!canRedeem && !pending)) return
+    if (!userId) { setExchangeError('账户信息未加载，请稍后重试'); return }
+    const command = pending || { requestId: crypto.randomUUID(), packageType: selectedService }
     try {
-      const data: any = await request.post('/interview/exchange-package', { packageType: selectedService })
-      if (data?.remainingMaiCoin !== undefined) {
-        userStore.updateUserInfo({ maiCoinBalance: data.remainingMaiCoin })
-      }
-      toast({ title: '兑换成功', description: `已兑换 ${services.find(s => s.id === selectedService)?.title || selectedService}`, color: 'green' })
-      const svc = services.find(s => s.id === selectedService)
-      onRedeemSuccess(svc?.title || selectedService)
+      localStorage.setItem(exchangeKey(userId), JSON.stringify(command))
+    } catch {
+      setExchangeError('无法保存本次兑换请求，请检查浏览器存储后重试')
+      return
+    }
+    setPending(command)
+    redeemingRef.current = true
+    setIsRedeeming(true)
+    setExchangeError('')
+    try {
+      const data: unknown = await request.post('/interview/exchange-package', command)
+      if (!data || typeof data !== 'object' || !('requestId' in data) || data.requestId !== command.requestId ||
+        !('packageType' in data) || data.packageType !== command.packageType || !('success' in data) || data.success !== true ||
+        !('remainingMaiCoin' in data) || typeof data.remainingMaiCoin !== 'number' || !Number.isFinite(data.remainingMaiCoin) ||
+        !('remainingCount' in data) || !Number.isInteger(data.remainingCount)) throw new Error('兑换结果未确认，请使用同一请求重试')
+      const countKey = command.packageType === 'resume' ? 'resumeRemainingCount' : command.packageType === 'special' ? 'specialRemainingCount' : 'behaviorRemainingCount'
+      userStore.updateUserInfo({ maiCoinBalance: data.remainingMaiCoin, [countKey]: data.remainingCount as number })
+      localStorage.removeItem(exchangeKey(userId))
+      setPending(null)
+      toast({ title: '兑换成功', description: `已兑换 ${services.find(s => s.id === command.packageType)?.title || command.packageType}`, color: 'green' })
+      const svc = services.find(s => s.id === command.packageType)
+      onRedeemSuccess(svc?.title || command.packageType)
       onClose()
-    } catch (e: any) {
-      toast({ title: '兑换失败', description: e.message || '请稍后重试', color: 'red' })
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : '结果未确认，请重试同一次兑换'
+      setExchangeError(message)
+      toast({ title: '兑换结果未确认', description: message, color: 'red' })
     } finally {
       setIsRedeeming(false)
+      redeemingRef.current = false
     }
   }
 
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => { if (!isRedeeming) onClose() }}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
@@ -99,7 +141,7 @@ export default function RedeemServiceModal({ open, onClose, onRedeemSuccess, onG
               <p className="text-xs text-gray-500">使用小麦币兑换面试服务权益</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 transition-colors">
+          <button onClick={onClose} disabled={isRedeeming} aria-label="关闭兑换" className="p-1 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50">
             <Icon name="i-heroicons-x-mark" className="w-5 h-5 text-gray-500" />
           </button>
         </div>
@@ -143,8 +185,14 @@ export default function RedeemServiceModal({ open, onClose, onRedeemSuccess, onG
                 return (
                   <div
                     key={service.id}
+                    role="button"
+                    tabIndex={pending ? -1 : 0}
+                    aria-pressed={isSelected}
+                    aria-disabled={!!pending}
+                    aria-label={`兑换${service.title}`}
                     className={`group relative bg-white rounded-2xl border-2 transition-all duration-300 cursor-pointer overflow-hidden ${isSelected ? 'border-primary-500 shadow-lg shadow-primary-500/20 scale-[1.02]' : 'border-gray-200 hover:border-primary-300 hover:shadow-md'}`}
-                    onClick={() => setSelectedService(service.id)}
+                    onClick={() => { if (!pending) setSelectedService(service.id) }}
+                    onKeyDown={event => { if (!pending && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setSelectedService(service.id) } }}
                   >
                     {isSelected && (
                       <div className="absolute top-3 right-3 w-6 h-6 rounded-full bg-primary-500 flex items-center justify-center z-10">
@@ -190,7 +238,9 @@ export default function RedeemServiceModal({ open, onClose, onRedeemSuccess, onG
           </div>
 
           {/* 余额不足提示 */}
-          {!canRedeem && (
+          {pending && <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">上次兑换尚未确认。请重试这次{services.find(service => service.id === pending.packageType)?.title}兑换；重复请求不会再次扣币。</p>}
+          {exchangeError && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{exchangeError}</p>}
+          {!canRedeem && !pending && (
             <div className="bg-red-50 border border-red-100 rounded-xl p-4 flex items-start gap-3">
               <Icon name="i-heroicons-exclamation-circle" className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
               <div className="flex-1">
@@ -211,16 +261,16 @@ export default function RedeemServiceModal({ open, onClose, onRedeemSuccess, onG
         <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
           <p className="text-xs text-gray-500">兑换后服务立即生效，可在个人中心查看剩余次数</p>
           <div className="flex items-center gap-3">
-            <button onClick={onClose} className="px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors text-sm">
+            <button onClick={onClose} disabled={isRedeeming} className="px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors text-sm disabled:opacity-50">
               取消
             </button>
             <button
               onClick={handleRedeem}
-              disabled={!selectedService || !canRedeem || isRedeeming}
+              disabled={!selectedService || (!canRedeem && !pending) || isRedeeming}
               className="px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium flex items-center gap-1.5"
             >
               <Icon name="i-heroicons-sparkles" className="w-4 h-4" />
-              {isRedeeming ? '兑换中...' : '确认兑换'}
+              {isRedeeming ? '兑换中...' : pending ? '重试本次兑换' : '确认兑换'}
             </button>
           </div>
         </div>

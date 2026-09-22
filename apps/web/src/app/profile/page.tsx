@@ -250,7 +250,7 @@ export default function ProfilePage() {
       <RedeemServiceModal
         open={showRedeem}
         onClose={() => setShowRedeem(false)}
-        onRedeemSuccess={(serviceType) => { alert(`兑换成功：${serviceType}`); fetchResumes() }}
+        onRedeemSuccess={() => { void fetchUserInfo(); void fetchRecords(activeRecordTab) }}
         onGoToRecharge={() => { setShowRedeem(false); setShowRecharge(true) }}
       />
       <RechargeModal open={showRecharge} onClose={() => setShowRecharge(false)} onRecharged={fetchResumes} />

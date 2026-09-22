@@ -70,7 +70,7 @@ graph TD
 
 ## 模拟面试开场权益账本
 
-`QuotaLedgerModule` 提供独立 `QuotaLedgerService`。当前仅模拟面试开场接入，简历押题、兑换和支付不属于此幂等保证。
+`QuotaLedgerModule` 提供独立 `QuotaLedgerService`。当前模拟面试开场和小麦币兑换接入；简历押题与支付仍有独立账务路径，不能据此宣称它们具备同样保证。
 
 - 操作主键由用户、操作类型和请求 ID 确定；payloadHash 拒绝同 ID 不同金额。用户单文档原子修改权益、quotaRevision 与 quotaReceipt，使用 majority 写确认。
 - 先读账户，再读操作状态，再按版本及余额下限条件更新。回执归档前不能被下一笔覆盖；重试可协助归档，不依赖进程内状态或 Mongo 事务。

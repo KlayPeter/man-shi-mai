@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsNotEmpty } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsUUID } from 'class-validator';
 
 /**
  * 兑换类型枚举
@@ -14,6 +14,10 @@ export enum ExchangePackageType {
  * 兑换套餐请求 DTO
  */
 export class ExchangePackageDto {
+  @ApiProperty({ description: '本次兑换的 UUID；重试必须复用' })
+  @IsUUID('4')
+  requestId: string;
+
   @ApiProperty({
     description: '兑换类型',
     enum: ExchangePackageType,

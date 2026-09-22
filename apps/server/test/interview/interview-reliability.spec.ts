@@ -1,6 +1,8 @@
 import { InterviewStartService } from '../../src/interview/services/interview-start.service';
+import { QuotaLedgerService } from '../../src/user/quota-ledger.service';
 import { InterviewTurnService } from '../../src/interview/services/interview-turn.service';
 import { Test } from '@nestjs/testing';
+import { BadRequestException } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { ConfigService } from '@nestjs/config';
 import { lastValueFrom, timeout, toArray } from 'rxjs';
@@ -32,6 +34,8 @@ describe('interview reliability', () => {
   const consumption = { findOne: jest.fn(), create: jest.fn() };
   const quiz = { findOne: jest.fn() };
   const starts = { start: jest.fn() };
+  const quota = { apply: jest.fn() };
+  const transactions = { updateOne: jest.fn(), exists: jest.fn() };
   const continuation = { continue: jest.fn() };
 
   beforeEach(async () => {
@@ -40,6 +44,7 @@ describe('interview reliability', () => {
       providers: [
         InterviewService,
         { provide: InterviewStartService, useValue: starts },
+        { provide: QuotaLedgerService, useValue: quota },
         SessionManager,
         ...[
           ConfigService,
@@ -54,10 +59,11 @@ describe('interview reliability', () => {
         { provide: getModelToken('User'), useValue: user },
         { provide: getModelToken('ConsumptionRecord'), useValue: consumption },
         { provide: getModelToken('ResumeQuizResult'), useValue: quiz },
-        ...['Resume', 'AIInterviewResult', 'UserTransaction'].map((name) => ({
+        ...['Resume', 'AIInterviewResult'].map((name) => ({
           provide: getModelToken(name),
           useValue: {},
         })),
+        { provide: getModelToken('UserTransaction'), useValue: transactions },
       ],
     }).compile();
     service = module.get(InterviewService);
@@ -138,17 +144,45 @@ describe('interview reliability', () => {
     expect(user.findOneAndUpdate).not.toHaveBeenCalled();
   });
 
-  it('checks balance atomically even if the initial balance read is stale', async () => {
-    user.findById.mockResolvedValue({ maiCoinBalance: 20 });
-    user.findOneAndUpdate.mockResolvedValue(null);
-    await expect(service.exchangePackage(userId, 'resume')).rejects.toThrow(
-      '小麦币余额不足',
+  it('applies coin debit and practice credit together, and reuses one transaction identity', async () => {
+    quota.apply.mockResolvedValue({ operationId: 'exchange-op' });
+    user.findById.mockResolvedValue({
+      maiCoinBalance: 0,
+      resumeRemainingCount: 1,
+    });
+    const requestId = '4f387521-e4c9-46da-ab7f-da395e70254f';
+    expect(
+      (await service.exchangePackage(userId, 'resume', requestId))
+        .remainingCount,
+    ).toBe(1);
+    expect(
+      (await service.exchangePackage(userId, 'resume', requestId)).requestId,
+    ).toBe(requestId);
+    expect(quota.apply).toHaveBeenCalledWith(
+      userId,
+      'package-exchange',
+      requestId,
+      {
+        maiCoinBalance: -20,
+        resumeRemainingCount: 1,
+      },
     );
-    expect(user.findOneAndUpdate).toHaveBeenCalledWith(
-      { _id: userId, maiCoinBalance: { $gte: 20 } },
-      { $inc: { maiCoinBalance: -20, resumeRemainingCount: 1 } },
-      { new: true },
-    );
+    expect(transactions.updateOne).toHaveBeenCalledTimes(2);
+    expect(transactions.updateOne.mock.calls[0][0]).toEqual({
+      relatedOrderId: 'exchange-op',
+    });
+    expect(user.findOneAndUpdate).not.toHaveBeenCalled();
+  });
+  it('does not create an exchange transaction if the ledger rejects the debit', async () => {
+    quota.apply.mockRejectedValue(new BadRequestException('小麦币不足'));
+    await expect(
+      service.exchangePackage(
+        userId,
+        'resume',
+        '4f387521-e4c9-46da-ab7f-da395e70254f',
+      ),
+    ).rejects.toThrow('小麦币不足');
+    expect(transactions.updateOne).not.toHaveBeenCalled();
   });
 
   it('checks session ownership before mutating history or invoking the model', async () => {
