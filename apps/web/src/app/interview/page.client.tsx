@@ -12,7 +12,7 @@ import request from '@/lib/request'
 import { getUserInfoAPI } from '@/api/user'
 import Icon from '@/components/ui/Icon'
 import InterviewConfirmModal from '@/components/interview/InterviewConfirmModal'
-import VoiceInputModal from '@/components/interview/VoiceInputModal'
+import AnswerComposer from '@/components/interview/AnswerComposer'
 import RestoreInterviewModal from '@/components/interview/RestoreInterviewModal'
 import { useSpeechSynthesis } from '@/hooks/useSpeechSynthesis'
 
@@ -55,7 +55,6 @@ export default function InterviewPageContent() {
   const [isStreaming, setIsStreaming] = useState(false)
   const [countdown, setCountdown] = useState(0)
   const [showCountdown, setShowCountdown] = useState(false)
-  const [showVoiceModal, setShowVoiceModal] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const interviewSseRef = useRef<AbortController | null>(null)
   const messages = useInterviewStore(s => s.messages)
@@ -1170,36 +1169,6 @@ export default function InterviewPageContent() {
           </div>
         )}
 
-        {/* 语音输入模态框 */}
-        {showVoiceModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">语音输入</h3>
-                <button
-                  onClick={() => setShowVoiceModal(false)}
-                  className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
-                >
-                  <Icon name="i-heroicons-x-mark" className="w-5 h-5 text-gray-500" />
-                </button>
-              </div>
-              <VoiceInputModal
-                initialText={inputMessage}
-                onConfirm={(text) => {
-                  setShowVoiceModal(false)
-                  if (text.trim() && canSend) {
-                    setInputMessage(text)
-                    sendAnswer(text)
-                  }
-                }}
-                onRealtimeUpdate={(text) => setInputMessage(text)}
-                profession="programmer"
-                context="interview"
-              />
-            </div>
-          </div>
-        )}
-
         {/* 恢复面试弹窗 */}
         <RestoreInterviewModal
           open={showRestoreModal}
@@ -1209,7 +1178,7 @@ export default function InterviewPageContent() {
         />
 
         {/* 顶部信息栏 */}
-        <div className="flex items-center justify-between px-6 py-3 border-b border-gray-100 bg-white shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 border-b border-line bg-white shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
               <Icon name="i-heroicons-sparkles" className="w-4 h-4 text-white" />
@@ -1219,10 +1188,12 @@ export default function InterviewPageContent() {
               <p className="text-xs text-gray-400">{serviceLabels[serviceType]}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={speechSynthesis.toggle}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              disabled={!speechSynthesis.isSupported}
+              aria-pressed={speechSynthesis.isEnabled && speechSynthesis.isSupported}
+              className={`inline-flex min-h-11 shrink-0 whitespace-nowrap items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 speechSynthesis.isEnabled
                   ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
                   : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
@@ -1230,20 +1201,19 @@ export default function InterviewPageContent() {
               title={speechSynthesis.isEnabled ? '关闭语音' : '开启语音'}
             >
               <Icon name={speechSynthesis.isEnabled ? 'i-heroicons-speaker-wave' : 'i-heroicons-speaker-x-mark'} className="w-3.5 h-3.5" />
-              {speechSynthesis.isEnabled ? '语音开启' : '语音关闭'}
+              {!speechSynthesis.isSupported ? '朗读不可用' : speechSynthesis.isEnabled ? '朗读开启' : '朗读关闭'}
             </button>
             {(isStreaming || interviewStatus === 'in_progress') && !isEnded && (
               <button
                 onClick={() => {
                   speechSynthesis.stop()
-                  interviewStore.setInterviewEventType('waiting')
-                  setIsStreaming(false)
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 text-xs font-medium transition-colors"
-                title="跳过当前语音/问题"
+                className="inline-flex min-h-11 shrink-0 whitespace-nowrap items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 text-xs font-medium transition-colors"
+                title="停止当前朗读"
+                disabled={!speechSynthesis.isSpeaking}
               >
                 <Icon name="i-heroicons-forward" className="w-3.5 h-3.5" />
-                跳过
+                停止朗读
               </button>
             )}
             {isEnded ? (
@@ -1256,7 +1226,7 @@ export default function InterviewPageContent() {
                     toast({ title: '无法查看报告', description: '面试ID不存在，请重新开始面试', color: 'red' })
                   }
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-medium hover:bg-green-700 transition-colors"
+                className="inline-flex min-h-11 shrink-0 whitespace-nowrap items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-medium hover:bg-green-700 transition-colors"
               >
                 <Icon name="i-heroicons-document-text" className="w-3.5 h-3.5" />
                 查看报告
@@ -1264,7 +1234,7 @@ export default function InterviewPageContent() {
             ) : (
               <button
                 onClick={endInterview}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 text-red-500 text-xs font-medium hover:bg-red-50 transition-colors"
+                className="inline-flex min-h-11 shrink-0 whitespace-nowrap items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 text-red-500 text-xs font-medium hover:bg-red-50 transition-colors"
               >
                 <Icon name="i-heroicons-stop-circle" className="w-3.5 h-3.5" />
                 结束面试
@@ -1316,41 +1286,9 @@ export default function InterviewPageContent() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* 输入区域 */}
-        {!isEnded && (
-          <div className="border-t border-gray-100 p-4 bg-white shrink-0">
-            <div className="relative">
-              <textarea
-                value={inputMessage}
-                onChange={e => setInputMessage(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); if (canSend) sendAnswer(inputMessage) } }}
-                placeholder={canSend ? '请输入您的回答... (Enter 发送，Shift+Enter 换行，可随时打断 AI)' : '面试已结束'}
-                disabled={!canSend}
-                rows={3}
-                className="w-full px-4 py-3 pr-32 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none disabled:bg-gray-50 disabled:text-gray-400"
-              />
-              <div className="absolute right-3 bottom-3 flex items-center gap-2">
-                <button
-                  onClick={() => setShowVoiceModal(true)}
-                  disabled={!canSend}
-                  className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
-                  title="语音输入"
-                >
-                  <Icon name="i-heroicons-microphone" className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => { if (canSend) sendAnswer(inputMessage) }}
-                  disabled={!canSend || !inputMessage.trim()}
-                  className="px-4 py-1.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
-                >
-                  发送
-                  <Icon name="i-heroicons-send" className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-            <p className="text-xs text-gray-400 mt-2 px-1">Enter 发送 | Shift+Enter 换行 | 点击麦克风语音输入</p>
-          </div>
-        )}
+        {!isEnded && <AnswerComposer value={inputMessage} onChange={setInputMessage}
+          onSend={sendAnswer} disabled={!canSend || isStreaming}
+          onBeforeRecord={speechSynthesis.stop} />}
 
         {isEnded && (
           <div className="border-t border-gray-100 p-4 bg-green-50 shrink-0 text-center">

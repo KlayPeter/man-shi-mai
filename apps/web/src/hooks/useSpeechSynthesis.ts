@@ -1,128 +1,71 @@
-import { useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 export const useSpeechSynthesis = () => {
   const [isEnabled, setIsEnabled] = useState(true)
   const [isSpeaking, setIsSpeaking] = useState(false)
-  const speechQueue = useRef<string[]>([])
-  const spokenTextCache = useRef(new Set<string>())
-  const currentFragment = useRef('')
+  const enabled = useRef(true)
+  const mounted = useRef(true)
+  const queue = useRef<string[]>([])
+  const spoken = useRef(new Set<string>())
+  const fragment = useRef('')
+  const active = useRef<SpeechSynthesisUtterance | null>(null)
+  const generation = useRef(0)
+  const [isSupported, setIsSupported] = useState(false)
 
-  const isSupported = typeof window !== 'undefined' && 'speechSynthesis' in window
+  const stop = useCallback(() => {
+    generation.current++
+    queue.current = []; fragment.current = ''; spoken.current.clear()
+    if (active.current) { active.current.onstart = null; active.current.onend = null; active.current.onerror = null }
+    active.current = null
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel()
+    if (mounted.current) setIsSpeaking(false)
+  }, [])
+  useEffect(() => {
+    mounted.current = true
+    setIsSupported('speechSynthesis' in window)
+    return () => { mounted.current = false; stop() }
+  }, [stop])
 
-  const extractSentences = (text: string): string[] => {
-    if (!text) return []
-    return text
-      .split(/([。！？；\n]+)/)
-      .reduce((acc: string[], part, index, array) => {
-        if (index % 2 === 0 && part.trim()) {
-          const punctuation = array[index + 1] || ''
-          acc.push(part.trim() + punctuation)
-        }
-        return acc
-      }, [])
-      .filter(s => s.trim().length > 0)
-  }
-
-  const speakSentence = (sentence: string): Promise<void> => {
-    if (!isSupported || !isEnabled || !sentence.trim()) return Promise.resolve()
-
-    return new Promise((resolve, reject) => {
-      try {
-        const utterance = new SpeechSynthesisUtterance(sentence)
-        utterance.lang = 'zh-CN'
-        utterance.rate = 2.0
-        utterance.pitch = 1
-        utterance.volume = 1
-
-        const voices = window.speechSynthesis.getVoices()
-        const zhVoice = voices.find((voice) => voice.lang.includes('zh'))
-        if (zhVoice) utterance.voice = zhVoice
-
-        utterance.onstart = () => setIsSpeaking(true)
-        utterance.onend = () => {
-          setIsSpeaking(false)
-          resolve()
-        }
-        utterance.onerror = (event) => {
-          console.error('语音合成错误:', event)
-          setIsSpeaking(false)
-          reject(event)
-        }
-
-        window.speechSynthesis.speak(utterance)
-      } catch (error) {
-        reject(error)
-      }
-    })
-  }
-
-  const processQueue = async () => {
-    if (speechQueue.current.length === 0 || !isEnabled) return
-
-    const sentence = speechQueue.current.shift()
-    if (!sentence) return
-
+  const processQueue = useCallback(function next() {
+    if (!mounted.current || !enabled.current || active.current || typeof window === 'undefined' || !('speechSynthesis' in window)) return
+    const sentence = queue.current.shift()
+    if (!sentence) { setIsSpeaking(false); return }
+    const id = generation.current
     try {
-      await speakSentence(sentence)
-    } catch (error) {
-      console.error('朗读失败:', error)
-    }
-
-    if (speechQueue.current.length > 0) processQueue()
-  }
-
-  const handleStreamText = (streamText: string, isFinal = false) => {
-    if (!isEnabled || !streamText) return
-
-    currentFragment.current += streamText
-    const sentences = extractSentences(currentFragment.current)
-
-    if (sentences.length > 0) {
-      const sentencesToSpeak = isFinal ? sentences : sentences.slice(0, -1)
-      const remaining = isFinal ? '' : sentences[sentences.length - 1] || ''
-
-      sentencesToSpeak.forEach(sentence => {
-        const normalized = sentence.trim()
-        if (normalized && !spokenTextCache.current.has(normalized)) {
-          spokenTextCache.current.add(normalized)
-          speechQueue.current.push(normalized)
-        }
-      })
-
-      currentFragment.current = remaining
-
-      if (speechQueue.current.length > 0 && !isSpeaking) processQueue()
-    }
-
-    if (isFinal && currentFragment.current.trim()) {
-      const lastFragment = currentFragment.current.trim()
-      if (!spokenTextCache.current.has(lastFragment)) {
-        spokenTextCache.current.add(lastFragment)
-        speechQueue.current.push(lastFragment)
-        if (!isSpeaking) processQueue()
+      const utterance = new SpeechSynthesisUtterance(sentence)
+      utterance.lang = 'zh-CN'; utterance.rate = 1; utterance.pitch = 1; utterance.volume = 1
+      const voice = window.speechSynthesis.getVoices().find(item => item.lang.startsWith('zh'))
+      if (voice) utterance.voice = voice
+      active.current = utterance
+      const finish = () => {
+        if (!mounted.current || generation.current !== id) return
+        active.current = null; next()
       }
-      currentFragment.current = ''
+      utterance.onstart = () => { if (mounted.current && generation.current === id) setIsSpeaking(true) }
+      utterance.onend = finish; utterance.onerror = finish
+      window.speechSynthesis.speak(utterance)
+    } catch {
+      active.current = null; queue.current = []; setIsSpeaking(false)
     }
-  }
+  }, [])
 
-  const stop = () => {
-    if (isSupported) {
-      window.speechSynthesis.cancel()
-      speechQueue.current = []
-      setIsSpeaking(false)
+  const handleStreamText = useCallback((text: string, isFinal = false) => {
+    if (!enabled.current || !text) return
+    fragment.current += text
+    const chunks = fragment.current.match(/[^。！？；\n]+[。！？；\n]+|[^。！？；\n]+$/g) || []
+    const last = chunks[chunks.length - 1] || ''
+    const complete = isFinal || /[。！？；\n]$/.test(last)
+    fragment.current = complete ? '' : chunks.pop() || ''
+    for (const chunk of chunks) {
+      const sentence = chunk.trim()
+      if (sentence && !spoken.current.has(sentence)) { spoken.current.add(sentence); queue.current.push(sentence) }
     }
-  }
-
-  const toggle = () => {
-    setIsEnabled(!isEnabled)
-    if (isEnabled) stop()
-  }
-
-  const reset = () => {
-    stop()
-    spokenTextCache.current.clear()
-    currentFragment.current = ''
-  }
-
-  return { isEnabled, isSpeaking, isSupported, handleStreamText, stop, toggle, reset }
+    processQueue()
+  }, [processQueue])
+  const toggle = useCallback(() => {
+    enabled.current = !enabled.current
+    setIsEnabled(enabled.current)
+    if (!enabled.current) stop()
+  }, [stop])
+  return { isEnabled, isSpeaking, isSupported, handleStreamText, stop, toggle, reset: stop }
 }

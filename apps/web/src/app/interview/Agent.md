@@ -33,7 +33,7 @@ flowchart TD
 - useInterviewStore 共享岗位、简历、会话、消息和进度。本地状态管理输入、生成进度、弹窗和流连接。
 - 普通 HTTP 通过 request；流式请求通过 ssePost 和统一 SSE 代理。不要将 SSE 当成一次性 JSON 请求。
 - 押题流：`/interview/resume/quiz/stream`；模拟面试流：`/interview/mock/start`、`/interview/mock/answer`；结束：`POST /interview/mock/end/:resultId`。
-- 历史入口使用 `history=true&resultId=`，按类型加载押题结果或模拟问答、历史会话。页面复用 VoiceInputModal、RestoreInterviewModal、InterviewConfirmModal 与语音合成 Hook。
+- 历史入口使用 `history=true&resultId=`，按类型加载押题结果或模拟问答、历史会话。页面复用 AnswerComposer、RestoreInterviewModal、InterviewConfirmModal 与语音合成 Hook。
 - InterviewLayout 在 progress 或尚未结束的 interview 阶段阻止离开；步骤 complete 与报告页显示复盘阶段。不要仅改变导航外观而移除该守卫。
 
 ## 报告与验证
@@ -52,3 +52,12 @@ flowchart TD
 - `e2e/report-local.spec.ts` 使用独立数据库的合成报告与真实 HTTP，验证锚点、手机布局、状态区分、404 不循环和离开后停止轮询。它不证明真实模型评分质量。
 
 - `ReviewOverview` 负责路线和能力图；题目节点可用键盘选中并跳到对应原文，默认展开第一题。切换场次重置展开状态，春秋招聘季沿用主题变量，不新增硬编码色板。
+
+### 页内语音回答
+
+- `AnswerComposer` 替换旧 `VoiceInputModal`，默认展示语音入口，但不自动申请麦克风。录音 → 校对 → 确认发送；可随时切换文字。转写追加到已有草稿，失败保留音频和文字，重试同一段音频，不自动发送或重新录制。
+- `InterviewRecorder` 独占单次设备生命周期；处理延迟授权后的取消、正常停止、录音错误和卸载，清理 track、AudioContext、RAF 与计时器。波形来自实际音量，不使用伪造循环动画。音量分析失败不阻断录音。
+- 当前后端是百度短语音整段识别，非实时双工。单段录音 55 秒自动结束、最多 4 MB，支持追加多段；此限制不代替后端时长/大小校验。跨浏览器真实录音与第三方识别质量仍需验证。
+- 转写使用统一 HTTP 客户端与 30 秒超时；FileReader 被真正 await，取消时不再覆盖当前草稿。浏览器取消请求不等于服务商已经中止处理或计费。
+- 面试官朗读为浏览器 TTS，正常语速、单队列播放；录音前、静音、结束及卸载时取消。停止朗读按钮只停止声音，不再冒充跳过问题或解锁仍在生成的回答。
+- `test/interview` 与 `test/api/interview-speech.spec.ts` 验证异步边界；`e2e/voice-input.spec.ts` 用 Chromium 原生 MediaRecorder 与合成麦克风验证界面，ASR/面试接口 Mock，不代表真实语音服务及恢复会话已验收。
