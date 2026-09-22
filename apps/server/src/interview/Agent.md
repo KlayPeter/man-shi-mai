@@ -107,3 +107,9 @@ flowchart TD
 - `reportEvidence/reportRubricVersion` 只在新报告生成后保存；历史记录无证据就显示缺失，不批量重生成或伪造。原文存在只能验证引用真实性，不代表已经验证评价语义与评分质量。
 - 接口只返回复盘所需字段，不返回 sessionState、简历快照、任务领取凭据和供应商原始错误。
 - 单元测试见 `test/interview/interview-report.spec.ts`；真实数据库并发/租约测试见 `test/integration/report-recovery.cjs`（AI Stub）；真实 HTTP 只读状态验证见 `report-http.cjs`。模型实际质量尚需独立评估。
+
+## 历史记录分页
+
+三个历史入口接收 `InterviewHistoryQueryDto`：page 默认 1、范围 1–100000；limit 默认 10、范围 1–50，必须为整数。返回 `{ list, total, page, limit }`；查询与计数都限定当前用户和面试类型，按 `createdAt desc, _id desc` 排序。分页请求不是数据库快照，新插入记录可能移动跨页位置；本次不引入游标迁移。
+
+模拟面试列表复用 `InterviewReportService.status` 判断复盘状态，返回字段白名单，不透出问答、简历和内部租约；押题记录已落库即显示完成。现有前端支持 list 包装，新前端同时兼容旧服务端全量数组。无查询参数也返回默认第一页，不再返回无界列表；外部脚本如直接依赖数组，需改读 data.list 并按 total 分页。无需回填历史记录。

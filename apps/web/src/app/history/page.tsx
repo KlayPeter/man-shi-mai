@@ -1,267 +1,101 @@
-﻿'use client'
+'use client'
 
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import Icon from '@/components/ui/Icon'
-import { useUserStore } from '@/stores/userStore'
-import request from '@/lib/request'
+import { getHistoryPage, historyDestination, historyLabels, reportLabels, type HistoryItem, type HistoryType } from '@/api/interview-history'
 
-const tabs = [
+const tabs: { key: HistoryType; label: string; icon: string }[] = [
   { key: 'resume', label: '面试押题', icon: 'i-heroicons-document-text' },
   { key: 'special', label: '专项面试', icon: 'i-heroicons-light-bulb' },
   { key: 'behavior', label: '行测 + HR', icon: 'i-heroicons-users' }
 ]
-
-const API_MAP: Record<string, string> = {
-  resume: '/interview/resume/quiz/history',
-  special: '/interview/special/history',
-  behavior: '/interview/behavior/history'
+const limit = 10
+function formatDate(date: string | null) {
+  return date ? new Date(date).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '日期未记录'
 }
 
-function formatDate(date: string) {
-  if (!date) return ''
-  return new Date(date).toLocaleString('zh-CN', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit'
-  })
+function RecordCard({ item, type }: { item: HistoryItem; type: HistoryType }) {
+  const isQuiz = type === 'resume'
+  const ended = item.status === 'completed'
+  const state = historyLabels[item.status]
+  const ready = item.reportStatus === 'completed'
+  return <li className="group rounded-2xl border border-line bg-white p-5 transition-colors hover:border-primary-300">
+    <div className="flex items-start gap-4">
+      <div aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-line bg-paper text-ink">
+        <Icon name={isQuiz ? 'i-heroicons-document-text' : state.icon} className="h-6 w-6" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <h3 className="break-words text-base font-semibold text-ink">{item.position || '通用岗位'}</h3>
+        <p className="mt-1 break-words text-sm text-muted">{item.company || '通用练习'}</p>
+        <time dateTime={item.createdAt ?? undefined} className="mt-1 block text-xs text-muted">{formatDate(item.createdAt)}</time>
+      </div>
+    </div>
+    <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+      <ol aria-label="练习进度" className="flex items-center gap-2 text-xs">
+        <li className={`rounded-lg px-3 py-2 ${ended ? 'bg-primary-50 text-primary-700' : 'bg-paper text-ink'}`}>
+          <span className="block text-muted">{isQuiz ? '押题' : '面试'}</span><span className="mt-1 block font-medium">{isQuiz ? '已生成' : state.label}</span>
+        </li>
+        {!isQuiz && <><li aria-hidden="true"><Icon name="i-heroicons-arrow-right" className="h-4 w-4 text-muted" /></li>
+          <li className={`rounded-lg px-3 py-2 ${ended && ready ? 'bg-primary-50 text-primary-700' : 'bg-paper text-ink'}`}>
+            <span className="block text-muted">复盘</span><span className="mt-1 block font-medium">{ended ? reportLabels[item.reportStatus] : '尚未开始'}</span>
+          </li></>}
+      </ol>
+      <Link href={historyDestination(item, type)} className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-primary-700 transition-colors hover:bg-primary-50">
+        {isQuiz ? '查看押题' : ended ? '查看复盘' : '查看问答'}<Icon name="i-heroicons-arrow-top-right-on-square" className="h-4 w-4" />
+      </Link>
+    </div>
+  </li>
 }
 
 export default function HistoryPage() {
-  const router = useRouter()
-  const userStore = useUserStore()
-  const [activeTab, setActiveTab] = useState('resume')
-  const [isLoading, setIsLoading] = useState(false)
-  const [list, setList] = useState<any[]>([])
-  const [loadError, setLoadError] = useState(false)
-  const requestId = useRef(0)
-  const [total, setTotal] = useState(0)
+  const [activeTab, setActiveTab] = useState<HistoryType>('resume')
   const [page, setPage] = useState(1)
-  const limit = 10
-
-  const currentTabLabel = tabs.find(t => t.key === activeTab)?.label || ''
-
-  const loadData = useCallback(async (tab = activeTab, currentPage = page) => {
-    const id = ++requestId.current
-    setIsLoading(true)
-    setLoadError(false)
-    try {
-      const data: any = await request.get(`${API_MAP[tab]}?page=${currentPage}&limit=${limit}`)
-      if (id !== requestId.current) return
-      const records = Array.isArray(data) ? data : (data?.list || data?.records || [])
-      setList(records)
-      setTotal(Array.isArray(data) ? data.length : (data?.total || records.length))
-    } catch {
-      if (id !== requestId.current) return
-      setLoadError(true)
-      setList([])
-      setTotal(0)
-    } finally {
-      if (id === requestId.current) setIsLoading(false)
-    }
-  }, [activeTab, page])
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { loadData(activeTab, page) }, [activeTab, page])
-
-  const handleTabChange = (key: string) => {
-    if (activeTab === key) return
-    setActiveTab(key)
-    setPage(1)
-    setList([])
+  const [refresh, setRefresh] = useState(0)
+  const [isLoading, setIsLoading] = useState(true)
+  const [list, setList] = useState<HistoryItem[]>([])
+  const [loadError, setLoadError] = useState(false)
+  const [total, setTotal] = useState(0)
+  useEffect(() => {
+    const controller = new AbortController()
+    setIsLoading(true); setLoadError(false)
+    getHistoryPage(activeTab, page, limit, controller.signal).then(data => {
+      if (controller.signal.aborted) return
+      setList(data.list); setTotal(data.total)
+    }).catch(() => {
+      if (controller.signal.aborted) return
+      setLoadError(true); setList([]); setTotal(0)
+    }).finally(() => { if (!controller.signal.aborted) setIsLoading(false) })
+    return () => controller.abort()
+  }, [activeTab, page, refresh])
+  const reload = () => setRefresh(value => value + 1)
+  const changeTab = (type: HistoryType) => {
+    if (activeTab === type) return
+    setIsLoading(true); setActiveTab(type); setPage(1); setList([]); setTotal(0)
   }
-
-  const handlePageChange = (newPage: number) => {
-    setPage(newPage)
-  }
-
-  const handleView = (record: any) => {
-    if (record.resultId) {
-      router.push(`/interview?serviceType=${activeTab}&history=true&resultId=${record.resultId}`)
-    }
-  }
-
-  const totalPages = Math.ceil(total / limit)
-
-  return (
-    <div className="workspace-page">
-      <div className="page-container">
-        <div className="mb-8">
-          <h1 className="workspace-heading">练习记录</h1>
-          <p className="text-gray-500 text-sm mt-1">每一次练习都值得回顾。从反馈里，找到下一次进步的方向。</p>
+  const totalPages = Math.max(1, Math.ceil(total / limit))
+  return <div className="workspace-page"><div className="page-container">
+    <header className="mb-7 flex flex-wrap items-end justify-between gap-4">
+      <div><p className="mb-2 text-xs font-semibold tracking-[0.15em] text-primary-700">练习 · 回看 · 再出发</p><h1 className="workspace-heading">每一场，都有收获。</h1></div>
+      <Link href="/interview/start" className="button-primary"><Icon name="i-heroicons-plus" className="h-4 w-4" />开始新练习</Link>
+    </header>
+    <section aria-label="练习记录" className="rounded-3xl border border-line bg-white/60 p-4 sm:p-6">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div role="group" aria-label="练习类型" className="flex max-w-full flex-wrap gap-2">
+          {tabs.map(tab => <button key={tab.key} aria-pressed={activeTab === tab.key} onClick={() => changeTab(tab.key)} className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm font-medium transition-colors ${activeTab === tab.key ? 'border-ink bg-ink text-white' : 'border-line bg-white text-muted hover:text-ink'}`}><Icon name={tab.icon} className="h-4 w-4" />{tab.label}</button>)}
         </div>
-
-        <div className="flex flex-col md:flex-row gap-6 items-start">
-          <div className="w-full md:w-64 shrink-0 space-y-4">
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden p-2">
-              <div className="space-y-1">
-                {tabs.map(tab => (
-                  <button
-                    key={tab.key}
-                    aria-pressed={activeTab === tab.key}
-                    onClick={() => handleTabChange(tab.key)}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
-                      activeTab === tab.key
-                        ? 'bg-primary-50 text-primary-700'
-                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                    }`}
-                  >
-                    <div className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 transition-colors ${
-                      activeTab === tab.key ? 'bg-white text-primary-600 shadow-sm' : 'bg-gray-100 text-gray-400'
-                    }`}>
-                      <Icon name={tab.icon} className="w-5 h-5" />
-                    </div>
-                    <span>{tab.label}</span>
-                    {activeTab === tab.key && (
-                      <Icon name="i-heroicons-chevron-right" className="w-4 h-4 ml-auto text-primary-400" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="bg-ink rounded-xl p-4 text-white shadow-sm hidden md:block">
-              <div className="flex items-center gap-2 mb-2 opacity-90">
-                <Icon name="i-heroicons-sparkles" className="w-4 h-4" />
-                <span className="text-xs font-medium">AI 面试助手</span>
-              </div>
-              <p className="text-sm opacity-90 leading-relaxed">
-                定期回顾面试记录，复盘总结是提升面试成功率的关键。
-              </p>
-            </div>
-          </div>
-
-          <div className="flex-1 min-w-0 w-full">
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm min-h-[460px] flex flex-col">
-              <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
-                <h2 className="font-semibold text-gray-900 flex items-center gap-2">
-                  {currentTabLabel}列表
-                  <span className="text-gray-500 text-xs">{total} 条</span>
-                </h2>
-                <button
-                  onClick={() => loadData(activeTab, page)}
-                  disabled={isLoading}
-                  className="flex items-center gap-1.5 min-h-11 px-3 py-1.5 rounded-lg text-xs text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-50"
-                >
-                  <Icon name="i-heroicons-arrow-path" className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-                  刷新
-                </button>
-              </div>
-
-              <div className="p-4 flex-1 relative">
-                {isLoading && (
-                  <div className="absolute inset-0 bg-white/80 backdrop-blur-[1px] z-10 flex flex-col items-center justify-center">
-                    <Icon name="i-heroicons-arrow-path" className="w-8 h-8 animate-spin text-primary-500 mb-2" />
-                    <p className="text-sm text-gray-500">加载数据中...</p>
-                  </div>
-                )}
-
-                {!isLoading && loadError && (<div role="alert" className="py-20 text-center"><h3 className="font-semibold text-ink">记录暂时没有加载成功</h3><p className="my-3 text-sm text-muted">请检查网络连接后重试。</p><button className="button-secondary" onClick={() => loadData()}>重新加载</button></div>)}
-
-                {!isLoading && !loadError && list.length === 0 && (
-                  <div className="h-full flex flex-col items-center justify-center py-20 text-center">
-                    <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-4">
-                      <Icon name="i-heroicons-clipboard-document-list" className="w-10 h-10 text-gray-300" />
-                    </div>
-                    <h3 className="text-gray-900 font-medium mb-1">暂无相关记录</h3>
-                    <p className="text-gray-500 text-sm mb-6">您还没有进行过{currentTabLabel}</p>
-                    <Link
-                      href="/interview/start"
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 transition-colors"
-                    >
-                      <Icon name="i-heroicons-plus" className="w-4 h-4" />
-                      开始一次练习
-                    </Link>
-                  </div>
-                )}
-
-                {!isLoading && list.length > 0 && (
-                  <div className="space-y-3">
-                    {list.map((record: any) => (
-                      <div
-                        key={record.id || record.resultId}
-                        className="group relative bg-white p-4 rounded-xl border border-gray-100 hover:border-primary-200 hover:shadow-md transition-all duration-200 flex flex-col sm:flex-row sm:items-center gap-4"
-                      >
-                        <div className="flex items-start gap-4 flex-1 min-w-0">
-                          <div className="w-12 h-12 rounded-xl bg-gray-50 group-hover:bg-primary-50 text-gray-400 group-hover:text-primary-600 flex items-center justify-center shrink-0 transition-colors">
-                            <Icon name="i-heroicons-building-office-2" className="w-6 h-6" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h3 className="font-semibold text-gray-900 truncate group-hover:text-primary-600 transition-colors">
-                                {record.company || '未知公司'}
-                              </h3>
-                              <span className="text-gray-300 hidden sm:inline">|</span>
-                              <span className="text-sm text-gray-600 truncate hidden sm:inline">
-                                {record.position || '通用岗位'}
-                              </span>
-                            </div>
-                            <div className="text-sm text-gray-600 truncate sm:hidden mb-1">
-                              {record.position || '通用岗位'}
-                            </div>
-                            <div className="flex flex-wrap items-center gap-3 text-xs">
-                              <span className="text-gray-400 flex items-center gap-1">
-                                <Icon name="i-heroicons-clock" className="w-3.5 h-3.5" />
-                                {formatDate(record.createdAt)}
-                              </span>
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                record.status === 'success' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                              }`}>
-                                {record.status === 'success' ? '已完成' : '处理中'}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-50 mt-2 sm:mt-0 flex justify-end">
-                          <button
-                            onClick={() => handleView(record)}
-                            className="flex items-center gap-1.5 min-h-11 px-3 py-1.5 rounded-lg text-sm text-gray-600 hover:bg-primary-50 hover:text-primary-600 transition-colors group-hover:bg-primary-50 group-hover:text-primary-600"
-                          >
-                            <Icon name="i-heroicons-eye" className="w-4 h-4" />
-                            查看报告
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {total > limit && (
-                <div className="px-6 py-4 border-t border-gray-100 flex justify-center items-center gap-2">
-                  <button
-                    onClick={() => handlePageChange(page - 1)}
-                    disabled={page <= 1}
-                    className="min-h-11 px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    上一页
-                  </button>
-                  <div className="flex items-center gap-1">
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                      <button
-                        key={p}
-                        onClick={() => handlePageChange(p)}
-                        className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
-                          p === page ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-100'
-                        }`}
-                      >
-                        {p}
-                      </button>
-                    ))}
-                  </div>
-                  <button
-                    onClick={() => handlePageChange(page + 1)}
-                    disabled={page >= totalPages}
-                    className="min-h-11 px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    下一页
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <button onClick={reload} disabled={isLoading} className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm text-muted hover:bg-paper disabled:opacity-50"><Icon name="i-heroicons-arrow-path" className={`h-4 w-4 ${isLoading ? 'motion-safe:animate-spin' : ''}`} />刷新</button>
       </div>
-    </div>
-  )
+      <div className="mb-4 flex items-center justify-between text-sm"><h2 className="font-semibold text-ink">{tabs.find(tab => tab.key === activeTab)?.label}</h2><span aria-live="polite" className="text-muted">{isLoading ? '加载中' : loadError ? '暂不可用' : `${total} 场记录`}</span></div>
+      {isLoading ? <div role="status" className="grid min-h-64 place-items-center text-muted">正在整理练习记录…</div>
+        : loadError ? <div role="alert" className="py-16 text-center"><Icon name="i-heroicons-exclamation-circle" className="mx-auto mb-4 h-8 w-8 text-primary-700" /><h3 className="mb-4 font-semibold text-ink">记录暂时没有加载成功</h3><button className="button-secondary" onClick={reload}>重新加载</button></div>
+        : !list.length ? <div className="py-16 text-center"><Icon name="i-heroicons-clipboard-document-list" className="mx-auto mb-4 h-12 w-12 text-primary-700" /><h3 className="mb-5 font-semibold text-ink">{page > 1 ? '这一页暂无记录' : '你的下一场练习，从这里开始'}</h3>{page > 1 ? <button className="button-secondary" onClick={() => setPage(1)}>返回第一页</button> : <Link href="/interview/start" className="button-primary">开始一次练习</Link>}</div>
+        : <ul className="grid gap-4 lg:grid-cols-2">{list.map(item => <RecordCard key={item.resultId} item={item} type={activeTab} />)}</ul>}
+      {!loadError && (total > limit || page > 1) && <nav aria-label="记录分页" className="mt-6 flex items-center justify-center gap-3">
+        <button disabled={isLoading || page <= 1} onClick={() => { setIsLoading(true); setPage(value => value - 1) }} className="min-h-11 rounded-lg border border-line px-3 text-sm disabled:opacity-40">上一页</button>
+        <span aria-live="polite" className="text-sm text-muted">{page} / {totalPages}</span>
+        <button disabled={isLoading || page >= totalPages} onClick={() => { setIsLoading(true); setPage(value => value + 1) }} className="min-h-11 rounded-lg border border-line px-3 text-sm disabled:opacity-40">下一页</button>
+      </nav>}
+    </section>
+  </div></div>
 }

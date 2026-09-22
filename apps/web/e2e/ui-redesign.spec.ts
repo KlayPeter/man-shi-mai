@@ -99,10 +99,10 @@ test('历史加载失败不伪装为空记录，并可重试', async ({ page }) 
   }))
   await page.goto('/history')
   await expect(page.locator('main [role="alert"]')).toContainText('记录暂时没有加载成功')
-  await expect(page.getByText('暂无相关记录')).toBeHidden()
+  await expect(page.getByText('你的下一场练习，从这里开始')).toBeHidden()
   fail = false
   await page.getByRole('button', { name: '重新加载' }).click()
-  await expect(page.getByText('暂无相关记录')).toBeVisible()
+  await expect(page.getByText('你的下一场练习，从这里开始')).toBeVisible()
 })
 
 

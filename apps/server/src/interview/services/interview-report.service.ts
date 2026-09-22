@@ -42,7 +42,12 @@ export class InterviewReportService {
     return record;
   }
 
-  private status(record: AIInterviewResult): ReviewStatus {
+  status(
+    record: Pick<
+      AIInterviewResult,
+      'status' | 'qaList' | 'reportStatus' | 'reportLeaseExpiresAt'
+    >,
+  ): ReviewStatus {
     if (record.status !== 'completed') return 'not_ready';
     if (
       !(record.qaList || []).some(

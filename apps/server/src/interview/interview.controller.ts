@@ -1,3 +1,4 @@
+import { InterviewHistoryQueryDto } from './dto/interview-history.dto';
 import {
   Controller,
   Post,
@@ -9,6 +10,7 @@ import {
   Sse,
   Param,
   Get,
+  Query,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -356,9 +358,13 @@ export class InterviewController {
   @Get('resume/quiz/history')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: '获取简历押题历史记录' })
-  async getResumeQuizHistory(@Request() req: any) {
+  async getResumeQuizHistory(
+    @Request() req: { user: { userId: string } },
+    @Query() query: InterviewHistoryQueryDto,
+  ) {
     const history = await this.interviewService.getResumeQuizHistory(
       req.user.userId,
+      query,
     );
     return ResponseUtil.success(history, '获取成功');
   }
@@ -369,9 +375,13 @@ export class InterviewController {
   @Get('special/history')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: '获取专项面试历史记录' })
-  async getSpecialInterviewHistory(@Request() req: any) {
+  async getSpecialInterviewHistory(
+    @Request() req: { user: { userId: string } },
+    @Query() query: InterviewHistoryQueryDto,
+  ) {
     const history = await this.interviewService.getSpecialInterviewHistory(
       req.user.userId,
+      query,
     );
     return ResponseUtil.success(history, '获取成功');
   }
@@ -382,9 +392,13 @@ export class InterviewController {
   @Get('behavior/history')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: '获取综合面试历史记录' })
-  async getBehaviorInterviewHistory(@Request() req: any) {
+  async getBehaviorInterviewHistory(
+    @Request() req: { user: { userId: string } },
+    @Query() query: InterviewHistoryQueryDto,
+  ) {
     const history = await this.interviewService.getBehaviorInterviewHistory(
       req.user.userId,
+      query,
     );
     return ResponseUtil.success(history, '获取成功');
   }

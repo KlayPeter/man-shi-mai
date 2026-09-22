@@ -1,3 +1,8 @@
+import {
+  InterviewHistoryQueryDto,
+  InterviewHistoryItem,
+  InterviewHistoryPage,
+} from '../dto/interview-history.dto';
 // src/interview/services/interview.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -2490,37 +2495,80 @@ export class InterviewService {
     };
   }
 
-  /**
-   * 获取简历押题历史记录
-   */
-  async getResumeQuizHistory(userId: string): Promise<any[]> {
-    return await this.resumeQuizResultModel
-      .find({ userId })
-      .select('resultId company position matchScore createdAt')
-      .sort({ createdAt: -1 })
-      .lean();
+  async getResumeQuizHistory(
+    userId: string,
+    query: InterviewHistoryQueryDto = new InterviewHistoryQueryDto(),
+  ): Promise<InterviewHistoryPage> {
+    const filter = { userId };
+    const [records, total] = await Promise.all([
+      this.resumeQuizResultModel
+        .find(filter)
+        .select('resultId company position createdAt -_id')
+        .sort({ createdAt: -1, _id: -1 })
+        .skip((query.page - 1) * query.limit)
+        .limit(query.limit)
+        .lean<Omit<InterviewHistoryItem, 'status'>[]>(),
+      this.resumeQuizResultModel.countDocuments(filter),
+    ]);
+    return {
+      list: records.map((record) => ({ ...record, status: 'completed' })),
+      total,
+      page: query.page,
+      limit: query.limit,
+    };
   }
 
-  /**
-   * 获取专项面试历史记录
-   */
-  async getSpecialInterviewHistory(userId: string): Promise<any[]> {
-    return await this.aiInterviewResultModel
-      .find({ userId, interviewType: 'special' })
-      .select('resultId company position overallScore status createdAt')
-      .sort({ createdAt: -1 })
-      .lean();
+  getSpecialInterviewHistory(
+    userId: string,
+    query: InterviewHistoryQueryDto = new InterviewHistoryQueryDto(),
+  ) {
+    return this.getMockHistoryPage(userId, 'special', query);
   }
 
-  /**
-   * 获取综合面试历史记录
-   */
-  async getBehaviorInterviewHistory(userId: string): Promise<any[]> {
-    return await this.aiInterviewResultModel
-      .find({ userId, interviewType: 'behavior' })
-      .select('resultId company position overallScore status createdAt')
-      .sort({ createdAt: -1 })
-      .lean();
+  getBehaviorInterviewHistory(
+    userId: string,
+    query: InterviewHistoryQueryDto = new InterviewHistoryQueryDto(),
+  ) {
+    return this.getMockHistoryPage(userId, 'behavior', query);
+  }
+
+  private async getMockHistoryPage(
+    userId: string,
+    interviewType: string,
+    query: InterviewHistoryQueryDto,
+  ): Promise<InterviewHistoryPage> {
+    const filter = { userId, interviewType };
+    const [list, total] = await Promise.all([
+      this.aiInterviewResultModel
+        .find(filter)
+        .select(
+          'resultId company position status reportStatus reportLeaseExpiresAt qaList.question qaList.answer createdAt -_id',
+        )
+        .sort({ createdAt: -1, _id: -1 })
+        .skip((query.page - 1) * query.limit)
+        .limit(query.limit)
+        .lean<
+          (InterviewHistoryItem &
+            Pick<
+              AIInterviewResult,
+              'qaList' | 'reportLeaseExpiresAt' | 'reportStatus'
+            >)[]
+        >(),
+      this.aiInterviewResultModel.countDocuments(filter),
+    ]);
+    return {
+      list: list.map((item) => ({
+        resultId: item.resultId,
+        company: item.company,
+        position: item.position,
+        createdAt: item.createdAt,
+        status: item.status,
+        reportStatus: this.reports.status(item),
+      })),
+      total,
+      page: query.page,
+      limit: query.limit,
+    };
   }
 
   /**
