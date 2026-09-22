@@ -12,7 +12,7 @@ describe('JwtStrategy', () => {
         {
           provide: ConfigService,
           useValue: {
-            get: jest.fn().mockReturnValue('test-secret'),
+            getOrThrow: jest.fn().mockReturnValue('test-secret'),
           },
         },
       ],

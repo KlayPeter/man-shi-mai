@@ -241,9 +241,11 @@ export class InterviewService {
    * @returns AI 的回答
    */
   async continueConversation(
+    userId: string,
     sessionId: string,
     userQuestion: string,
   ): Promise<string> {
+    this.sessionManager.assertOwner(sessionId, userId);
     try {
       // 第一步：添加用户问题到会话历史
       this.sessionManager.addMessage(sessionId, 'user', userQuestion);
@@ -284,9 +286,13 @@ export class InterviewService {
     const subject = new Subject<ProgressEvent>();
 
     // 异步执行，通过 Subject 发送进度
-    this.executeResumeQuiz(userId, dto, subject).catch((error) => {
-      subject.error(error);
-    });
+    this.executeResumeQuiz(userId, dto, subject).then(
+      (result) => {
+        subject.next({ type: 'yati-complete', progress: 100, data: result });
+        subject.complete();
+      },
+      (error: unknown) => subject.error(error),
+    );
 
     return subject;
   }
@@ -300,6 +306,7 @@ export class InterviewService {
     progressSubject?: Subject<ProgressEvent>,
   ): Promise<any> {
     let consumptionRecord: any = null;
+    let deducted = false;
     const recordId = uuidv4();
     const resultId = uuidv4();
     console.log('recordId', recordId);
@@ -330,6 +337,7 @@ export class InterviewService {
             // 查询之前生成的结果
             const existingResult = await this.resumeQuizResultModel.findOne({
               resultId: existingRecord.resultId,
+              userId,
             });
 
             if (!existingResult) {
@@ -341,6 +349,16 @@ export class InterviewService {
               resultId: existingResult.resultId,
               questions: existingResult.questions,
               summary: existingResult.summary,
+              matchScore: existingResult.matchScore,
+              matchLevel: existingResult.matchLevel,
+              matchedSkills: existingResult.matchedSkills,
+              missingSkills: existingResult.missingSkills,
+              knowledgeGaps: existingResult.knowledgeGaps,
+              learningPriorities: existingResult.learningPriorities,
+              radarData: existingResult.radarData,
+              strengths: existingResult.strengths,
+              weaknesses: existingResult.weaknesses,
+              interviewTips: existingResult.interviewTips,
               remainingCount: await this.getRemainingCount(userId, 'resume'),
               consumptionRecordId: existingRecord.recordId,
               // ⭐ 重要：标记这是从缓存返回的结果
@@ -373,6 +391,7 @@ export class InterviewService {
       if (!user) {
         throw new BadRequestException('简历押题次数不足，请前往充值页面购买');
       }
+      deducted = true;
 
       // 记录详细日志
       this.logger.log(
@@ -574,15 +593,6 @@ export class InterviewService {
         'done',
       );
 
-      // 发送结果数据
-      if (progressSubject && !progressSubject.closed) {
-        progressSubject.next({
-          type: 'yati-complete',
-          progress: 100,
-          data: result,
-        });
-      }
-
       return result;
     } catch (error) {
       this.logger.error(
@@ -593,9 +603,10 @@ export class InterviewService {
       // ========== 失败回滚流程 ==========
       try {
         // 1. 返还次数（最重要！）
-        this.logger.log(`🔄 开始退还次数: userId=${userId}`);
-        await this.refundCount(userId, 'resume');
-        this.logger.log(`✅ 次数退还成功: userId=${userId}`);
+        if (deducted) {
+          await this.refundCount(userId, 'resume');
+          deducted = false;
+        }
 
         // 2. 更新消费记录为失败
         if (consumptionRecord) {
@@ -643,7 +654,8 @@ export class InterviewService {
           type: 'error',
           progress: 0,
           label: '❌ 生成失败',
-          error: error,
+          error:
+            error instanceof Error ? error.message : '服务暂时不可用，请重试',
         });
         progressSubject.complete();
       }
@@ -839,17 +851,17 @@ export class InterviewService {
       }
 
       urlToDownload = resume.url;
-      this.logger.log(
-        `✅ 未发现纯文本快照，回退至文件解析，URL=${urlToDownload}`,
-      );
+      this.logger.log('未发现纯文本快照，回退至文件解析');
     }
 
     // 优先级 3：如果有 URL（来自 resumeId 或 resumeURL），下载并解析
     if (urlToDownload) {
       try {
         // 1. 从 URL 下载文件
-        const rawText =
-          await this.documentParserService.parseDocumentFromUrl(urlToDownload);
+        const rawText = await this.documentParserService.parseDocumentFromUrl(
+          urlToDownload,
+          userId,
+        );
 
         // 2. 清理文本（移除格式化符号等）
         const cleanedText = this.documentParserService.cleanText(rawText);
@@ -935,7 +947,8 @@ export class InterviewService {
       if (subject && !subject.closed) {
         subject.next({
           type: MockInterviewEventType.ERROR,
-          error: error,
+          error:
+            error instanceof Error ? error.message : '服务暂时不可用，请重试',
         });
         subject.complete();
       }
@@ -966,6 +979,7 @@ export class InterviewService {
     dto: StartMockInterviewDto,
     progressSubject: Subject<MockInterviewEventDto>,
   ): Promise<void> {
+    let deducted = false;
     try {
       // 1. 检查并扣除次数
       // 根据面试类型选择扣费字段
@@ -992,6 +1006,7 @@ export class InterviewService {
           `${dto.interviewType === MockInterviewType.SPECIAL ? '专项面试' : '综合面试'}次数不足，请前往充值页面购买`,
         );
       }
+      deducted = true;
 
       this.logger.log(
         `✅ 用户扣费成功: userId=${userId}, type=${dto.interviewType}, 扣费前=${user[countField]}, 扣费后=${user[countField] - 1}`,
@@ -1197,7 +1212,7 @@ export class InterviewService {
         dto.interviewType === MockInterviewType.SPECIAL
           ? 'special'
           : 'behavior';
-      await this.refundCount(userId, countField as any);
+      if (deducted) await this.refundCount(userId, countField);
       throw error;
     }
   }
@@ -1223,7 +1238,8 @@ export class InterviewService {
         if (subject && !subject.closed) {
           subject.next({
             type: MockInterviewEventType.ERROR,
-            error: error,
+            error:
+              error instanceof Error ? error.message : '服务暂时不可用，请重试',
           });
           subject.complete();
         }
@@ -2577,21 +2593,21 @@ export class InterviewService {
     }
 
     // 3. 执行兑换（原子操作）
-    const updateData: any = {
+    const updateData = {
       $inc: {
         maiCoinBalance: -EXCHANGE_COST, // 扣除小麦币
         [countField]: EXCHANGE_COUNT, // 增加对应次数
       },
     };
 
-    const updatedUser = await this.userModel.findByIdAndUpdate(
-      userId,
+    const updatedUser = await this.userModel.findOneAndUpdate(
+      { _id: userId, maiCoinBalance: { $gte: EXCHANGE_COST } },
       updateData,
       { new: true },
     );
 
     if (!updatedUser) {
-      throw new BadRequestException('兑换失败，请重试');
+      throw new BadRequestException('小麦币余额不足，兑换未扣款');
     }
 
     this.logger.log(

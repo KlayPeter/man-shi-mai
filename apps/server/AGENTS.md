@@ -55,8 +55,8 @@ Controller 负责路由、鉴权与输入输出，Service 负责业务和持久�
 ## 4. 配置与依赖
 
 - 默认端口 3000；前端 HTTP 与 SSE 代理的地址应保持一致。
-- `AppModule` 当前显式读取 `.env.development`；不能假设设置 `NODE_ENV=production` 就会自动切换到 `.env.production`。生产环境通过部署平台注入变量，部署目录不要携带本地开发配置。
-- 新增环境变量需要更新 `.env.example` 并检查实际加载路径。`src/config/config.schema.ts` 的存在不等于它已接入 `ConfigModule` 校验，修改时核实调用关系。
+- 开发环境读取 `.env.development`；`NODE_ENV=production` 和 `test` 忽略本地环境文件，使用显式注入的变量。生产不自动读取 `.env.production`。
+- 新增环境变量需要更新 `.env.example` 并检查实际加载路径。`src/config/config.schema.ts` 已接入 `ConfigModule` 校验，启动要求数据库、JWT 和模型配置；生产 JWT 密钥至少 32 个字符。
 - 模型创建优先使用现有 `AIModelFactory`；新增配置、重试或客户端前，检查是否已有同类机制，避免重复调用和费用放大。
 - `p-retry` override 在根 `package.json` 管理；不要在子应用重新增加锁文件或覆盖配置。
 

@@ -12,7 +12,7 @@
 graph TD
     Client[客户端请求] --> Action{操作类别}
     Action -- Register --> CheckExists{用户名/邮箱存在?}
-    CheckExists -- 是 --> Throw409[抛出 409 Conflict]
+    CheckExists -- 是 --> Throw400[抛出 400 BadRequest]
     CheckExists -- 否 --> HashPass[Bcrypt Hash 密码加密]
     HashPass --> SaveDB[保存用户至 MongoDB]
     
@@ -53,7 +53,7 @@ graph TD
 - **加密安全**: 密码不能明文落库，必须使用 `bcryptjs.hash()` 并在验证时使用 `bcryptjs.compare()`。
 
 ## 5. 开发约束与边界处理 / Constraints & Guidelines
-- **防重名约束**: 注册时邮箱/用户名不能重复，服务中必须做 `findOne` 校验，查出冲突抛出 `ConflictException` (409)。
+- **防重名约束**: 注册时邮箱/用户名不能重复，服务中必须做 `findOne` 校验，查出冲突抛出 `BadRequestException` (400)。
 - **敏感数据安全**: 查询并返回用户信息时，**严禁**返回密码字段（查询时使用 `select('-password')` 或在响应前剔除）。
 - **分页处理**: 消费明细查询接口必须做分页处理，防范百万级查询击穿内存。
 
@@ -64,3 +64,5 @@ graph TD
 - **异常排查**:
   - `登录失败`：核对密码的 hash 比对是否正确。
   - `注册报错`：核对数据库中是否已存在同名或同邮箱记录。
+
+- 资料更新接受 `username`；兼容旧客户端 `nickname`，同时提供时以 `username` 为准。更新字段显式限定为用户名、邮箱、头像和电话，响应使用普通对象后剔除密码；客户端以服务器返回值更新显示。

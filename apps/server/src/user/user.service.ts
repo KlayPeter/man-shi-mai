@@ -113,6 +113,22 @@ export class UserService {
   }
 
   async updateUser(userId: string, updateUserDto: UpdateUserDto) {
+    const { nickname, username, email, avatar, phone } = updateUserDto;
+    const updates = {
+      username: username ?? nickname,
+      email,
+      avatar,
+      phone,
+    };
+    if (updates.username) {
+      const existingUser = await this.userModel.findOne({
+        username: updates.username,
+        _id: { $ne: userId },
+      });
+      if (existingUser) {
+        throw new BadRequestException('用户名已被使用');
+      }
+    }
     // 如果更新邮箱，检查邮箱是否已被使用
     if (updateUserDto.email) {
       const existingUser = await this.userModel.findOne({
@@ -125,9 +141,16 @@ export class UserService {
       }
     }
 
-    const user = await this.userModel.findByIdAndUpdate(userId, updateUserDto, {
-      new: true,
-    });
+    const user = await this.userModel
+      .findByIdAndUpdate(
+        userId,
+        { $set: updates },
+        {
+          new: true,
+          runValidators: true,
+        },
+      )
+      .lean();
 
     if (!user) {
       throw new NotFoundException('用户不存在');

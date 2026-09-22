@@ -1,4 +1,4 @@
-﻿import {
+import {
   Controller,
   Post,
   Body,
@@ -20,11 +20,13 @@ import {
 } from './dto/mock-interview.dto';
 import { ResponseUtil } from '../common/utils/response.util';
 import { ExchangePackageDto } from './dto/exchange-package.dto';
+import { ContinueConversationDto } from './dto/continue-conversation.dto';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 
 @ApiTags('面试管理')
 @ApiBearerAuth()
 @Controller('interview')
+@UseGuards(JwtAuthGuard)
 export class InterviewController {
   constructor(private readonly interviewService: InterviewService) {}
 
@@ -61,9 +63,11 @@ export class InterviewController {
   @Post('/continue-conversation')
   @ApiOperation({ summary: '继续对话' })
   async continueConversation(
-    @Body() body: { sessionId: string; question: string },
+    @Body() body: ContinueConversationDto,
+    @Request() req: { user: { userId: string } },
   ) {
     const result = await this.interviewService.continueConversation(
+      req.user.userId,
       body.sessionId,
       body.question,
     );
@@ -89,6 +93,7 @@ export class InterviewController {
   ) {
     const userId = req.user.userId;
     // 设置 SSE 响应头
+    res.status(200);
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -124,7 +129,7 @@ export class InterviewController {
       });
 
     // 客户端断开连接时取消订阅
-    req.on('close', () => {
+    res.on('close', () => {
       subscription.unsubscribe();
     });
   }
@@ -186,7 +191,7 @@ export class InterviewController {
       });
 
     // 客户端断开连接时取消订阅
-    req.on('close', () => {
+    res.on('close', () => {
       subscription.unsubscribe();
     });
   }
@@ -248,7 +253,7 @@ export class InterviewController {
       });
 
     // 客户端断开连接时取消订阅
-    req.on('close', () => {
+    res.on('close', () => {
       subscription.unsubscribe();
     });
   }

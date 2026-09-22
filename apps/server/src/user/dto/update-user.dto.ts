@@ -1,13 +1,24 @@
-import { IsString, IsOptional, IsEmail } from 'class-validator';
+import { IsString, IsOptional, IsEmail, Length } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class UpdateUserDto {
+  @ApiProperty({ description: '用户名', required: false })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @Length(2, 20)
+  @IsOptional()
+  username?: string;
+
   @ApiProperty({
     description: '用户昵称，用于显示',
     example: '张三',
     required: false,
   })
   @IsString()
+  @Length(2, 20)
   @IsOptional()
   nickname?: string;
 

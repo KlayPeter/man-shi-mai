@@ -31,7 +31,7 @@
 
 ## 3. HTTP 与 SSE 两条请求链路
 
-普通请求通过 `src/lib/request.ts` 访问 `/dev-api`，由 `next.config.js` 转发到后端。拦截器已将成功响应解包为业务 `data`；调用方不要再次按原始 Axios 响应解包。HTTP 401 与业务响应中的 401 都要保留登录失效处理。
+普通请求通过 `src/lib/request.ts` 访问 `/dev-api`，由 `src/app/dev-api/[...path]/route.ts` 转发到后端。拦截器已将成功响应解包为业务 `data`；调用方不要再次按原始 Axios 响应解包。HTTP 401 与业务响应中的 401 都要保留登录失效处理。
 
 流式请求链路为：
 
@@ -39,11 +39,11 @@
 src/lib/sse.ts → src/app/api/sse-proxy/route.ts → NestJS SSE 接口
 ```
 
-- 两种代理都使用服务端 `BACKEND_API_URL`，默认 `http://localhost:3000`。修改端口或代理时一起检查 `next.config.js`、SSE Route Handler、示例配置和 Playwright 配置。
+- 两种代理都使用服务端 `BACKEND_API_URL`，默认 `http://localhost:3000`。修改端口或代理时一起检查 `src/lib/backend-proxy.ts`、两种 Route Handler、示例配置和 Playwright 配置。
 - 代理保留 POST body、Authorization、上游状态和流式响应体，不将 SSE 一次性读完后当普通 JSON 返回。
 - SSE 解析变化要验证跨 chunk 的消息、结束标记、异常与取消，避免重复追加内容、重复完成回调或残留 loading。
 - 不把模型、OSS、支付密钥放入 `NEXT_PUBLIC_*`，也不让浏览器绕过统一代理依赖本机后端地址。
-- Next.js rewrite 目标受构建时配置影响；部署后的 SSE Route Handler 还会读取服务端环境。不能只改其中一个地址。
+- 两种代理均在请求时读取服务端环境，并透传取消信号。SSE 限定允许的面试路径，上游错误保留原状态及内容类型。
 
 ## 4. 简历与面试的业务边界
 

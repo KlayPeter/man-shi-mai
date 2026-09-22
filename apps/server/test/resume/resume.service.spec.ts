@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
 import { ResumeService } from '../../src/resume/resume.service';
 import { Resume } from '../../src/resume/schemas/resume.schema';
+import { StsService } from '../../src/sts/sts.service';
 
 describe('ResumeService', () => {
   let service: ResumeService;
@@ -25,6 +26,7 @@ describe('ResumeService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ResumeService,
+        { provide: StsService, useValue: { assertOwnedResumeUrl: jest.fn() } },
         {
           provide: getModelToken(Resume.name),
           useValue: MockResumeModel,

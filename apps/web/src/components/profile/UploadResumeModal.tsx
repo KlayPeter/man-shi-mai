@@ -28,11 +28,11 @@ export default function UploadResumeModal({ open, onClose, onUploaded }: Props) 
   }, [open])
 
   const processFile = (file: File) => {
-    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
-    const allowedExts = ['.pdf', '.doc', '.docx']
+    const allowedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+    const allowedExts = ['.pdf', '.docx']
     const ext = '.' + file.name.split('.').pop()?.toLowerCase()
     if (!allowedTypes.includes(file.type) && !allowedExts.includes(ext)) {
-      toast({ title: '不支持的文件格式', description: '请上传 PDF、DOC 或 DOCX 格式的文件', color: 'red' })
+      toast({ title: '不支持的文件格式', description: '请上传 PDF 或 DOCX 格式的文件', color: 'red' })
       return
     }
     if (file.size > FILE_SIZE_LIMIT) {
@@ -60,17 +60,20 @@ export default function UploadResumeModal({ open, onClose, onUploaded }: Props) 
     setUploading(true)
     try {
       const ossClient = await getOSSClient(userStore.token)
-      const userId = (userStore.userInfo as any)?._id || 'guest'
-      const fileName = `user-resumes/${userId}/${Date.now()}-${selectedFile.name}`
+      const userId = userStore.userInfo._id
+      if (!userId) throw new Error('登录信息缺失，请重新登录')
+      const extension = selectedFile.name.split('.').pop()?.toLowerCase()
+      if (!['pdf', 'docx'].includes(extension || '')) throw new Error('仅支持 PDF 或 DOCX 简历')
+      const fileName = `user-resumes/${userId}/${crypto.randomUUID()}.${extension}`
       const ossRes = await ossClient.put(fileName, selectedFile)
 
-      const res = await request.post('/resume/uploadResume', {
+      const res = await request.post<unknown, { _id: string }>('/resume/uploadResume', {
         url: ossRes.url,
         resumeName: selectedFile.name,
         uploadTime: new Date().toISOString()
       })
       toast({ title: '上传成功', color: 'green' })
-      onUploaded(res.data?._id)
+      onUploaded(res._id)
       onClose()
     } catch (e: any) {
       toast({ title: '上传失败', description: e.message || '请稍后重试', color: 'red' })
@@ -100,7 +103,7 @@ export default function UploadResumeModal({ open, onClose, onUploaded }: Props) 
             onDrop={handleDrop}
           >
             <input
-              ref={fileRef} type="file" accept=".pdf,.doc,.docx" className="hidden"
+              ref={fileRef} type="file" accept=".pdf,.docx" className="hidden"
               onChange={e => { const f = e.target.files?.[0]; if (f) processFile(f); e.target.value = '' }}
             />
             {uploading ? (

@@ -1,4 +1,11 @@
-import { IsString, IsNotEmpty } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsMongoId,
+  MaxLength,
+  IsObject,
+} from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class UploadResumeDto {
@@ -32,6 +39,7 @@ export class DeleteResumeDto {
     description: '要删除的简历 ID',
     example: '507f1f77bcf86cd799439011',
   })
+  @IsMongoId()
   resumeId: string;
 }
 
@@ -40,12 +48,19 @@ export class UpdateResumeNameDto {
     description: '要更新的简历 ID',
     example: '507f1f77bcf86cd799439011',
   })
+  @IsMongoId()
   resumeId: string;
 
   @ApiProperty({
     description: '新的简历名称',
     example: '张三-高级前端开发-5年经验.pdf',
   })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
   resumeName: string;
 }
 
@@ -65,7 +80,8 @@ export class UpdateResumeContentDto {
     example: { basics: { name: '张三' }, education: [] },
   })
   @IsNotEmpty()
-  editorData: any;
+  @IsObject()
+  editorData: Record<string, unknown>;
 
   @ApiProperty({
     description: '简历的纯文本快照，供面试和 AI 消费',

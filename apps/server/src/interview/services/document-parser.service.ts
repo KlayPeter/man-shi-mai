@@ -1,6 +1,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import axios from 'axios';
 import * as pdf from 'pdf-parse';
+import { StsService } from '../../sts/sts.service';
 
 const mammoth = require('mammoth');
 
@@ -10,12 +11,13 @@ const mammoth = require('mammoth');
  */
 @Injectable()
 export class DocumentParserService {
+  constructor(private readonly storage: StsService) {}
   private readonly logger = new Logger(DocumentParserService.name);
 
   // 支持的文件类型
   private readonly SUPPORTED_TYPES = {
     PDF: ['.pdf'],
-    DOCX: ['.docx', '.doc'],
+    DOCX: ['.docx'],
   };
 
   // 最大文件大小 (10MB)
@@ -26,15 +28,16 @@ export class DocumentParserService {
    * @param url 文件 URL（阿里云 OSS 等）
    * @returns 解析后的文本内容
    */
-  async parseDocumentFromUrl(url: string): Promise<string> {
+  async parseDocumentFromUrl(url: string, userId: string): Promise<string> {
     try {
-      this.logger.log(`开始解析文档: ${url}`);
+      this.logger.log('开始解析用户简历文档');
 
       // 1. 验证 URL
       this.validateUrl(url);
 
       // 2. 下载文件
-      const buffer = await this.downloadFile(url);
+      const signedUrl = await this.storage.getResumeReadUrl(url, userId);
+      const buffer = await this.downloadFile(signedUrl);
 
       // 3. 根据文件类型解析
       const fileType = this.getFileType(url);
@@ -89,11 +92,11 @@ export class DocumentParserService {
    * 获取文件类型
    */
   private getFileType(url: string): 'PDF' | 'DOCX' | null {
-    const urlLower = url.toLowerCase();
+    const urlLower = new URL(url).pathname.toLowerCase();
 
     for (const [type, extensions] of Object.entries(this.SUPPORTED_TYPES)) {
       for (const ext of extensions) {
-        if (urlLower.includes(ext)) {
+        if (urlLower.endsWith(ext)) {
           return type as 'PDF' | 'DOCX';
         }
       }
@@ -107,11 +110,13 @@ export class DocumentParserService {
    */
   private async downloadFile(url: string): Promise<Buffer> {
     try {
-      this.logger.log(`开始下载文件: ${url}`);
+      this.logger.log('开始下载已授权的简历文件');
 
       const response = await axios.get(url, {
         responseType: 'arraybuffer',
         timeout: 30000, // 30秒超时
+        maxRedirects: 0,
+        proxy: false,
         maxContentLength: this.MAX_FILE_SIZE,
         maxBodyLength: this.MAX_FILE_SIZE,
         headers: {
@@ -157,9 +162,7 @@ export class DocumentParserService {
         );
       }
 
-      throw new BadRequestException(
-        `文件下载失败: ${error.message || '未知错误'}`,
-      );
+      throw new BadRequestException('文件下载失败，请检查上传是否完成后重试');
     }
   }
 
@@ -169,7 +172,6 @@ export class DocumentParserService {
   private async parsePdf(buffer: Buffer): Promise<string> {
     try {
       this.logger.log('开始解析 PDF 文件');
-      console.log('pdf', pdf);
 
       const data = await pdf.default(buffer);
 
@@ -263,8 +265,8 @@ export class DocumentParserService {
         // 1. 统一换行符
         .replace(/\r\n/g, '\n')
         .replace(/\r/g, '\n')
-        // 去除文字中间的多余空格
-        .replace(/\s+/g, '')
+        // 保留词间空格与段落，避免英文经历合并成一个长词。
+        .replace(/[^\S\n]+/g, ' ')
 
         // 2. 去除多余的空行（保留最多2个连续换行）
         .replace(/\n{3,}/g, '\n\n')
@@ -275,7 +277,7 @@ export class DocumentParserService {
         .join('\n')
 
         // 4. 去除特殊的 Unicode 控制字符
-        .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
+        .replace(/[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/g, '')
 
         // 5. 统一空格（去除多余空格）
         .replace(/ {2,}/g, ' ')

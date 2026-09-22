@@ -106,12 +106,22 @@ NODE_ENV=production pnpm start:server
 
 前后端可部署到不同机器或不同服务。部署平台的安装命令应从仓库根目录执行，以使用 workspace 和根锁文件；每个服务选择自己的构建和启动命令。
 
-前端构建时配置 `BACKEND_API_URL`，指向部署后后端的内部地址。`NEXT_PUBLIC_*` 值会进入浏览器构建产物，禁止放入密钥。后端生产环境变量通过部署平台注入，生产目录不要复制本地 `.env.development`。
+前端运行时配置 `BACKEND_API_URL`，指向部署后后端的内部地址。`NEXT_PUBLIC_*` 值会进入浏览器构建产物，禁止放入密钥。后端生产环境变量通过部署平台注入，生产目录不要复制本地 `.env.development`。
 
 GitHub Actions 在 `main` 推送和 PR 时执行冻结锁文件安装及 `pnpm check`。这条流水线负责验证，不自动发布应用。
 
+## 文件上传配置
+
+上传使用阿里云 STS 限时授权，需要在后端设置 `OSS_STS_ROLE_ARN`、OSS Bucket/地域以及具有 AssumeRole 权限的服务端凭据。浏览器只获得当前用户目录的临时权限；未配置时可继续使用文本或在线简历。配置与限制见 [文件临时授权](apps/server/src/sts/Agent.md)。测试 Bucket 的真实授权、CORS、上传和读取尚需独立验收。
+
+## 产品待升级方向
+
+功能想法统一记录在[产品待升级清单](docs/product-backlog.md)。该清单仅作需求备忘，暂不启动开发，也不代表已排期或已实现。
+
+现有系统的后续演进见[重构、Agent 升级与 Jev 评估方案](docs/refactor-agent-jev-plan.md)：先打通面试与复盘，再完善 Agent 架构，最后评估是否引入 Jev；第一阶段实施中，后两阶段未启动。
+
 ## 原仓库与开发规范
 
-两个原仓库的主分支历史保留在本仓库提交图中，详见 [迁移记录](docs/monorepo-migration.md)。本地旧目录 `man-shi-mai-web/`、`man-shi-mai-server/` 已忽略，新功能统一在 `apps/` 开发。
+两个原仓库的主分支历史保留在本仓库提交图中，详见 [迁移记录](docs/monorepo-migration.md)。两个本地旧目录已从工作区移除（移至系统废纸篓保留恢复能力），新功能统一在 `apps/` 开发。
 
 开发前阅读根目录 [AGENTS.md](AGENTS.md) 与对应应用的 `ai/Agent.md`。提交采用 Conventional Commits 和中文描述。

@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { WinstonModule, WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
@@ -12,7 +13,7 @@ async function bootstrap() {
   const winstonLogger = createWinstonLogger(nodeEnv);
 
   // 创建 NestJS 应用，使用 Winston logger
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: WinstonModule.createLogger({
       instance: winstonLogger,
     }),
@@ -21,8 +22,8 @@ async function bootstrap() {
   });
 
   // 增加请求体大小限制
-  app.use(require('express').json({ limit: '50mb' }));
-  app.use(require('express').urlencoded({ limit: '50mb', extended: true }));
+  app.useBodyParser('json', { limit: '50mb' });
+  app.useBodyParser('urlencoded', { limit: '50mb', extended: true });
 
   // 让所有的 NestJS 组件都用 Winston logger
   app.useLogger(app.get(WINSTON_MODULE_NEST_PROVIDER));

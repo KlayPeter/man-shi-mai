@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   reactStrictMode: true,
   images: {
     remotePatterns: [
@@ -25,14 +26,6 @@ const nextConfig = {
       },
     ],
     unoptimized: false,
-  },
-  async rewrites() {
-    return [
-      {
-        source: '/dev-api/:path*',
-        destination: `${process.env.BACKEND_API_URL || 'http://localhost:3000'}/:path*`,
-      },
-    ]
   },
   webpack(config) {
     config.module.rules.push({

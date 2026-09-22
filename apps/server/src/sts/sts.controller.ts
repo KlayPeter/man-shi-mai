@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, UseGuards, Request } from '@nestjs/common';
 import { StsService } from './sts.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ResponseUtil } from '../common/utils/response.util';
@@ -13,8 +13,8 @@ export class StsController {
   @Get('getStsToken')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: '获取STS临时凭证' })
-  async getStsToken() {
-    const token = await this.stsService.getStsToken();
+  async getStsToken(@Request() req: { user: { userId: string } }) {
+    const token = await this.stsService.getStsToken(req.user.userId);
     return ResponseUtil.success(token, '获取成功');
   }
 }

@@ -5,5 +5,6 @@ import { StsService } from './sts.service';
 @Module({
   controllers: [StsController],
   providers: [StsService],
+  exports: [StsService],
 })
 export class StsModule {}

@@ -19,16 +19,24 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { JwtStrategy } from './auth/jwt.strategy';
 import { getTokenExpirationSeconds } from './common/utils/jwt.util';
 import { TraceIdMiddleware } from './common/middleware/trace-id.middleware';
+import { configValidationSchema } from './config/config.schema';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       envFilePath: '.env.development',
+      ignoreEnvFile: ['production', 'test'].includes(
+        process.env.NODE_ENV || '',
+      ),
       isGlobal: true,
+      validationSchema: configValidationSchema,
     }),
-    MongooseModule.forRoot(
-      process.env.MONGODB_URI || 'mongodb://localhost:27017/manshimai',
-    ),
+    MongooseModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        uri: config.getOrThrow<string>('MONGODB_URI'),
+      }),
+    }),
     WinstonModule.forRoot({
       format: winston.format.combine(
         winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
@@ -46,7 +54,7 @@ import { TraceIdMiddleware } from './common/middleware/trace-id.middleware';
       useFactory: async (configService: ConfigService) => {
         const expirationSeconds = getTokenExpirationSeconds();
         return {
-          secret: configService.get<string>('JWT_SECRET') || 'mmx-secret',
+          secret: configService.getOrThrow<string>('JWT_SECRET'),
           signOptions: {
             expiresIn: expirationSeconds,
           },

@@ -1,7 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Resume, ResumeDocument } from './schemas/resume.schema';
+import { StsService } from '../sts/sts.service';
 import {
   UploadResumeDto,
   UpdateResumeNameDto,
@@ -13,6 +18,7 @@ export class ResumeService {
   constructor(
     @InjectModel(Resume.name)
     private resumeModel: Model<ResumeDocument>,
+    private readonly storage: StsService,
   ) {}
 
   async getInterviewResumeList(userId: string) {
@@ -23,12 +29,18 @@ export class ResumeService {
   }
 
   async uploadResume(userId: string, dto: UploadResumeDto) {
-    console.log('uploadResume - userId:', userId);
-    console.log('uploadResume - dto:', JSON.stringify(dto));
+    const key = this.storage.assertOwnedResumeUrl(dto.url, userId);
+    const url = new URL(dto.url);
+    url.protocol = 'https:';
+    url.search = '';
+    url.hash = '';
+    if (!/\.(pdf|docx)$/i.test(key)) {
+      throw new BadRequestException('仅支持 PDF 或 DOCX 简历');
+    }
     const resume = new this.resumeModel({
       userId,
       resumeName: dto.resumeName,
-      url: dto.url,
+      url: url.href,
       uploadTime: new Date(dto.uploadTime),
     });
     return await resume.save();

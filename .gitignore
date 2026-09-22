@@ -1,4 +1,4 @@
-# Original standalone repositories, retained only as local references
+# Keep accidental restoration of the removed legacy repositories untracked
 /man-shi-mai-web/
 /man-shi-mai-server/
 

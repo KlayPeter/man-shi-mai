@@ -212,6 +212,9 @@ importers:
       zod:
         specifier: ^4.4.3
         version: 4.4.3
+      ali-oss:
+        specifier: ^6.23.0
+        version: 6.23.0
     devDependencies:
       "@eslint/eslintrc":
         specifier: ^3.2.0
@@ -288,6 +291,9 @@ importers:
       typescript-eslint:
         specifier: ^8.20.0
         version: 8.54.0(eslint@9.39.2)(typescript@5.9.3)
+      "@types/ali-oss":
+        specifier: ^6.23.3
+        version: 6.23.3
 packages:
   "@alloc/quick-lru@5.2.0":
     resolution:
@@ -7867,6 +7873,9 @@ packages:
   zod@4.4.3:
     resolution:
       integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==
+  "@types/ali-oss@6.23.3":
+    resolution:
+      integrity: sha512-huSf6njkqhSeR37OMJTGMCyUg2d9Zp2AioefhYuUMeh0vNM+WybctrBor7bO/RcCbLCQI6sHn6NtPBIWALYVJg==
 snapshots:
   "@alloc/quick-lru@5.2.0": {}
   "@asamuzakjp/css-color@5.1.11":
@@ -13378,3 +13387,4 @@ snapshots:
     dependencies:
       zod: 4.4.3
   zod@4.4.3: {}
+  "@types/ali-oss@6.23.3": {}

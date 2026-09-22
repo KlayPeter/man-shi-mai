@@ -1,32 +1,18 @@
+import { forwardBackendRequest } from '@/lib/backend-proxy'
+
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+const allowedPaths = new Set([
+  '/interview/resume/quiz/stream',
+  '/interview/mock/start',
+  '/interview/mock/answer',
+])
+
 export async function POST(request: Request) {
-  const { searchParams } = new URL(request.url)
-  const path = searchParams.get('path') || ''
-  const body = await request.text()
-
-  const backendUrl = `${process.env.BACKEND_API_URL || 'http://localhost:3000'}${path}`
-  const token = request.headers.get('authorization')
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Accept': 'text/event-stream'
+  const path = new URL(request.url).searchParams.get('path') || ''
+  if (!allowedPaths.has(path)) {
+    return Response.json({ code: 400, message: '不支持的流式接口' }, { status: 400 })
   }
-  if (token) headers['Authorization'] = token
-
-  const response = await fetch(backendUrl, {
-    method: 'POST',
-    headers,
-    body
-  })
-
-  return new Response(response.body, {
-    status: response.status,
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive'
-    }
-  })
+  return forwardBackendRequest(request, path, true)
 }

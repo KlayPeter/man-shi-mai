@@ -48,7 +48,8 @@ export default function EditProfileModal({ open, onClose }: Props) {
     setAvatarUploading(true)
     try {
       const ossClient = await getOSSClient(userStore.token)
-      const userId = (userStore.userInfo as any)?.openid || (userStore.userInfo as any)?._id || 'guest'
+      const userId = userStore.userInfo._id
+      if (!userId) throw new Error('登录信息缺失，请重新登录')
       const ext = file.type.split('/').pop()
       const fileName = `user-img/${userId}/${Date.now()}.${ext}`
       const ossRes = await ossClient.put(fileName, file)
@@ -70,12 +71,12 @@ export default function EditProfileModal({ open, onClose }: Props) {
     }
     setLoading(true)
     try {
-      await request.post('/user/update', {
+      const saved = await request.post<unknown, { username: string; email?: string; avatar?: string }>('/user/update', {
         username: form.username.trim(),
-        email: form.email.trim(),
+        email: form.email.trim() || undefined,
         avatar: form.avatar
       })
-      userStore.updateUserInfo({ username: form.username.trim(), email: form.email.trim(), avatar: form.avatar })
+      userStore.updateUserInfo({ username: saved.username, email: saved.email, avatar: saved.avatar })
       toast({ title: '个人信息修改成功', color: 'green' })
       onClose()
     } catch (err: any) {
@@ -141,8 +142,9 @@ export default function EditProfileModal({ open, onClose }: Props) {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">用户名</label>
+            <label htmlFor="profile-username" className="block text-sm font-medium text-gray-700 mb-2">用户名</label>
             <input
+              id="profile-username"
               type="text"
               value={form.username}
               onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
@@ -152,8 +154,9 @@ export default function EditProfileModal({ open, onClose }: Props) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">邮箱</label>
+            <label htmlFor="profile-email" className="block text-sm font-medium text-gray-700 mb-2">邮箱</label>
             <input
+              id="profile-email"
               type="email"
               value={form.email}
               onChange={e => setForm(f => ({ ...f, email: e.target.value }))}

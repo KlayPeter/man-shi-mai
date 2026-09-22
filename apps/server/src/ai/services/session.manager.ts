@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Message, SessionData } from '../interfaces/message.interface';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -21,6 +21,12 @@ export class SessionManager {
 
   // 内存存储：sessionId → 对话历史
   private sessions = new Map<string, SessionData>();
+
+  assertOwner(sessionId: string, userId: string): void {
+    if (this.sessions.get(sessionId)?.userId !== userId) {
+      throw new NotFoundException('会话不存在或已过期');
+    }
+  }
 
   /**
    * 创建新会话

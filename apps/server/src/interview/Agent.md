@@ -18,7 +18,7 @@ graph TD
     CompileGraph --> RunGraph[运行 LangGraph 节点 introduction]
     RunGraph --> SSE[通过 RxJS 发送 SSE 事件流]
     
-    Client2[客户端请求 mock/answer] --> LoadState[读取 MongoDB 全局状态]
+    Client2[客户端请求 mock/answer] --> LoadState[读取内存会话状态]
     LoadState --> RouteJudge[evaluatePhaseTransition 裁判判定]
     RouteJudge --> ReachedLimit{判定需要跳转或达到次数上限?}
     ReachedLimit -- 是 --> StateMove[跳转至下一阶段并重置提问计数]
@@ -31,7 +31,7 @@ graph TD
 ## 3. 架构设计与代码流转 / Architectural Workflow
 - **控制器 (InterviewController)**:
   - 文件：`interview.controller.ts`
-  - 核心接口（大部分接口均受 `JwtAuthGuard` 保护）：
+  - 核心接口（控制器统一受 `JwtAuthGuard` 保护，继续对话另校验会话归属）：
     - `POST /interview/analyze-resume`: 分析简历内容。
     - `POST /interview/resume/quiz/stream`: 简历押题流式接口（SSE）。
     - `POST /interview/mock/start`: 启动模拟面试流式提问。
@@ -59,7 +59,7 @@ graph TD
 
 ## 5. 开发约束与边界处理 / Constraints & Guidelines
 - **SSE 流传输约束**: 在所有流式输出接口（如 `mock/start`、`mock/answer`）中，**必须**显式设定响应 Header (如 `Content-Type: text/event-stream; charset=utf-8`，`Cache-Control: no-cache`，禁用 Nginx 缓冲等)。
-- **订阅释放**: 在 SSE 请求中，客户端意外关闭连接（`req.on('close')`）时，**必须**主动取消 RxJS 的 `Subscription` 订阅，以防止发生服务器后台线程泄露。
+- **订阅释放**: 在 SSE 请求中，客户端意外关闭连接（`res.on('close')`）时，**必须**主动取消 RxJS 的 `Subscription` 订阅，以防止发生服务器后台线程泄露。
 - **判分逻辑**: 最终判分必须覆盖 matchedSkills (匹配技能点) 和 missingSkills (缺失技能点)，确保前台雷达图能获取到完整的数据。
 
 ## 6. 本地调试与排查 / Debugging & Verification
@@ -69,3 +69,12 @@ graph TD
   - `[InterviewService] startMockInterviewWithStream` (面试开始)
   - `[DocumentParserService] Finished parsing file` (解析文件完成)
   - 异常排查关注大模型调用的 API Timeouts。
+
+## 第一阶段可靠性修复
+
+- 简历押题的缓存命中和新结果统一由流式入口发送 `yati-complete` 并结束；失败事件携带可显示的错误消息。
+- 仅在本次确实扣次后执行失败退款；兑换在同一个条件更新中校验余额并增加次数。跨请求幂等与跨文档账务恢复尚在重构范围内，不能将这一局部修复等同于完整账务保障。
+- 当前活跃模拟面试仍依赖内存 Map，暂停后可通过已有恢复接口重建；进程重启恢复需要后续完善。
+- SSE 订阅在响应关闭时清理；取消订阅不等于底层模型调用已取消。Node 请求对象的 close 表示请求读取结束，不能用它判断整个响应已断开（[Node HTTP 文档](https://nodejs.org/api/http.html#event-close_3)）。
+
+- 文件解析仅允许当前配置 OSS Bucket 内本人的简历目录，由 `StsService` 重新生成短期读取签名；不追随重定向。文本清理保留英文单词空格和段落，避免破坏内容。

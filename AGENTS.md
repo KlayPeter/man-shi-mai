@@ -24,7 +24,7 @@
 | `packages/*` | 已预留 workspace 匹配规则；当前尚无共享包，不要为了目录完整而创建空包 |
 | 根 `package.json` / `pnpm-workspace.yaml` / `pnpm-lock.yaml` | 工作区命令、包范围、统一依赖解析 |
 | `.github/workflows/ci.yml` | 安装、lint、单元测试、构建；不负责部署 |
-| `man-shi-mai-web/` / `man-shi-mai-server/` | 本地保留的旧仓库，已忽略；只作历史参考，不在其中开发或提交 |
+| 原 `man-shi-mai-web/` / `man-shi-mai-server/` | 已从工作区移除；历史保留在 Git 提交图中，开发只使用 `apps/` |
 
 前端不得直接导入后端 Service、Mongoose Schema 或服务端配置。出现真实复用需求时，可以将无框架依赖的请求、响应和事件类型提取到 `packages/contracts`，再通过 workspace 包引用；不要用跨应用相对路径绕过依赖声明。
 

@@ -3,9 +3,11 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { ResumeController } from './resume.controller';
 import { ResumeService } from './resume.service';
 import { Resume, ResumeSchema } from './schemas/resume.schema';
+import { StsModule } from '../sts/sts.module';
 
 @Module({
   imports: [
+    StsModule,
     MongooseModule.forFeature([{ name: Resume.name, schema: ResumeSchema }]),
   ],
   controllers: [ResumeController],

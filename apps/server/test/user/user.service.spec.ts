@@ -218,10 +218,13 @@ describe('UserService', () => {
   describe('updateUser', () => {
     it('should update user successfully', async () => {
       userModel.findOne.mockResolvedValue(null);
-      userModel.findByIdAndUpdate.mockResolvedValue({
-        _id: 'user-123',
-        username: 'updateduser',
-        email: 'updated@example.com',
+      userModel.findByIdAndUpdate.mockReturnValue({
+        lean: jest.fn().mockResolvedValue({
+          _id: 'user-123',
+          username: 'updateduser',
+          email: 'updated@example.com',
+          password: 'must-not-be-returned',
+        }),
       });
 
       const result = await service.updateUser('user-123', {
@@ -230,6 +233,43 @@ describe('UserService', () => {
       });
 
       expect(result.username).toBe('updateduser');
+      expect(JSON.stringify(result)).not.toContain('must-not-be-returned');
+      expect(result).not.toHaveProperty('password');
+    });
+
+    it('maps the legacy nickname and never passes account privileges through', async () => {
+      userModel.findOne.mockResolvedValue(null);
+      userModel.findByIdAndUpdate.mockReturnValue({
+        lean: jest.fn().mockResolvedValue({ username: '旧客户端' }),
+      });
+      const input = {
+        nickname: '旧客户端',
+        maiCoinBalance: 999,
+        password: 'unsafe',
+      };
+      await service.updateUser('user-123', input);
+      const update = userModel.findByIdAndUpdate.mock.calls[0][1].$set;
+      expect(update.username).toBe('旧客户端');
+      expect(update).not.toHaveProperty('nickname');
+      expect(update).not.toHaveProperty('password');
+      expect(update).not.toHaveProperty('maiCoinBalance');
+    });
+
+    it('rejects a username already used by another user', async () => {
+      userModel.findOne.mockResolvedValue({ _id: 'other' });
+      await expect(
+        service.updateUser('user-123', { username: 'occupied' }),
+      ).rejects.toThrow('用户名已被使用');
+      expect(userModel.findByIdAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('reports an account removed before updating', async () => {
+      userModel.findByIdAndUpdate.mockReturnValue({
+        lean: jest.fn().mockResolvedValue(null),
+      });
+      await expect(
+        service.updateUser('missing', { avatar: '' }),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('should throw BadRequestException if new email is already in use', async () => {
