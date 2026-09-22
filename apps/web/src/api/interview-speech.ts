@@ -25,3 +25,19 @@ export async function transcribeInterviewAudio(blob: Blob, signal: AbortSignal):
   if (!result || typeof result !== 'object' || !('text' in result) || typeof result.text !== 'string' || !result.text.trim()) throw new Error('没有识别到清晰语音，可以重试转写或直接输入。')
   return result.text.trim()
 }
+
+export function speechFailureMessage(error: unknown): string {
+  const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object'
+  const status = record(error) && record(error.response) ? error.response.status : undefined
+  const messages: Record<number, string> = {
+    400: '录音格式、大小或时长不符合要求，请重新录制较短的一段。',
+    401: '登录已过期，请重新登录后再试。',
+    422: '没有识别到清晰语音，请回听检查，或切换文字回答。',
+    429: '语音请求过于频繁，请稍后重试。',
+    502: '语音服务暂时异常，可以稍后重试或使用文字回答。',
+    503: '语音服务暂不可用或繁忙，请稍后重试或使用文字回答。',
+    504: '语音识别超时，可以重试转写或使用文字回答。',
+  }
+  const reason = typeof status === 'number' ? messages[status] : undefined
+  return `${reason || '转写未完成，可以重试转写或直接输入回答。'} 录音已保留。`
+}

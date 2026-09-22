@@ -1,3 +1,5 @@
+import { SpeechToTextDto } from './dto/speech-to-text.dto';
+import { InterviewSpeechService } from './services/interview-speech.service';
 import { InterviewHistoryQueryDto } from './dto/interview-history.dto';
 import {
   Controller,
@@ -34,6 +36,7 @@ export class InterviewController {
   constructor(
     private readonly interviewService: InterviewService,
     private readonly reports: InterviewReportService,
+    private readonly speech: InterviewSpeechService,
   ) {}
 
   /**
@@ -488,8 +491,11 @@ export class InterviewController {
   @Post('speech-to-text')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: '语音转文字' })
-  async speechToText(@Body() body: { audio: string }, @Request() req: any) {
-    const text = await this.interviewService.speechToText(body.audio);
+  async speechToText(
+    @Body() body: SpeechToTextDto,
+    @Request() req: { user: { userId: string } },
+  ) {
+    const text = await this.speech.transcribe(req.user.userId, body.audio);
     return ResponseUtil.success({ text }, '识别成功');
   }
 

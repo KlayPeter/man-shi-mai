@@ -51,17 +51,6 @@ import {
 } from '../../user/schemas/user-transaction.schema';
 
 import { traceIdStorage } from '../../common/middleware/trace-id.middleware';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
-import * as ffmpeg from 'fluent-ffmpeg';
-import * as ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
-
-const AipSpeech = require('baidu-aip').speech;
-const ffmpegPath = ffmpegInstaller.path;
-
-ffmpeg.setFfmpegPath(ffmpegPath);
-
 /**
  * 进度事件
  */
@@ -2629,61 +2618,6 @@ export class InterviewService {
       )
       .sort({ updatedAt: -1 })
       .lean();
-  }
-
-  /**
-   * 语音转文字
-   */
-  async speechToText(audioBase64: string): Promise<string> {
-    const APP_ID = this.configService.get('BAIDU_APP_ID');
-    const API_KEY = this.configService.get('BAIDU_API_KEY');
-    const SECRET_KEY = this.configService.get('BAIDU_SECRET_KEY');
-
-    if (!APP_ID || !API_KEY || !SECRET_KEY) {
-      throw new BadRequestException('百度语音识别配置缺失');
-    }
-
-    const client = new AipSpeech(APP_ID, API_KEY, SECRET_KEY);
-    const audioBuffer = Buffer.from(audioBase64, 'base64');
-
-    const tempDir = os.tmpdir();
-    const webmPath = path.join(tempDir, `${uuidv4()}.webm`);
-    const wavPath = path.join(tempDir, `${uuidv4()}.wav`);
-
-    try {
-      fs.writeFileSync(webmPath, audioBuffer);
-
-      await new Promise((resolve, reject) => {
-        ffmpeg(webmPath)
-          .toFormat('wav')
-          .audioFrequency(16000)
-          .audioChannels(1)
-          .on('end', resolve)
-          .on('error', reject)
-          .save(wavPath);
-      });
-
-      const wavBuffer = fs.readFileSync(wavPath);
-      const result = await client.recognize(wavBuffer, 'wav', 16000, {
-        dev_pid: 1537,
-      });
-
-      if (result.err_no === 0) {
-        return result.result[0];
-      } else {
-        throw new BadRequestException(
-          `语音识别失败: ${result.err_msg || '未知错误'}`,
-        );
-      }
-    } catch (error) {
-      this.logger.error('语音识别错误:', error);
-      throw new BadRequestException(
-        `语音识别失败: ${error.message || '未知错误'}`,
-      );
-    } finally {
-      if (fs.existsSync(webmPath)) fs.unlinkSync(webmPath);
-      if (fs.existsSync(wavPath)) fs.unlinkSync(wavPath);
-    }
   }
 
   /**

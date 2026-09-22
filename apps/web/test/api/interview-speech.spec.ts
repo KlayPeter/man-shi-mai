@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 const http = vi.hoisted(() => ({ post: vi.fn() }))
 vi.mock('@/lib/request', () => ({ default: http }))
-import { audioToBase64, transcribeInterviewAudio } from '@/api/interview-speech'
+import { audioToBase64, transcribeInterviewAudio, speechFailureMessage } from '@/api/interview-speech'
 
 describe('speech upload boundary', () => {
   it('awaits FileReader and passes cancellation into the shared HTTP client', async () => {
@@ -22,4 +22,12 @@ describe('speech upload boundary', () => {
     http.post.mockRejectedValueOnce(new Error('offline'))
     await expect(transcribeInterviewAudio(new Blob(['sample']), new AbortController().signal)).rejects.toThrow('offline')
   })
+})
+
+it('区分识别为空、限流与服务失败，仍保留录音', () => {
+  expect(speechFailureMessage({ response: { status: 422 } })).toContain('没有识别到清晰语音')
+  expect(speechFailureMessage({ response: { status: 429 } })).toContain('过于频繁')
+  expect(speechFailureMessage({ response: { status: 503, data: { message: 'private upstream detail' } } })).toContain('暂不可用')
+  expect(speechFailureMessage({ response: { status: 503, data: { message: 'private upstream detail' } } })).not.toContain('private')
+  expect(speechFailureMessage(new Error('offline'))).toContain('录音已保留')
 })

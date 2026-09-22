@@ -113,3 +113,23 @@ flowchart TD
 三个历史入口接收 `InterviewHistoryQueryDto`：page 默认 1、范围 1–100000；limit 默认 10、范围 1–50，必须为整数。返回 `{ list, total, page, limit }`；查询与计数都限定当前用户和面试类型，按 `createdAt desc, _id desc` 排序。分页请求不是数据库快照，新插入记录可能移动跨页位置；本次不引入游标迁移。
 
 模拟面试列表复用 `InterviewReportService.status` 判断复盘状态，返回字段白名单，不透出问答、简历和内部租约；押题记录已落库即显示完成。现有前端支持 list 包装，新前端同时兼容旧服务端全量数组。无查询参数也返回默认第一页，不再返回无界列表；外部脚本如直接依赖数组，需改读 data.list 并按 total 分页。无需回填历史记录。
+
+## 语音服务边界
+
+```mermaid
+flowchart LR
+    A[鉴权与音频 DTO] --> B[单用户与实例限流]
+    B --> C[限定格式转为 PCM]
+    C --> D[百度 HTTPS 识别]
+    D --> E[文本或明确错误]
+    C --> F[清理临时文件]
+```
+
+`POST /interview/speech-to-text` 由 `InterviewSpeechService` 编排，`AudioTranscoderService` 使用随包 ffmpeg，`BaiduSpeechService` 管理 HTTPS Token 与识别请求；不再放在面试主服务中。请求保留 `{ audio: Base64 }`，返回 `{ text }`。
+
+- Base64 解码前后检查，文件最大 4 MB；仅 WebM、Ogg、M4A/MP4、WAV 容器。禁止播放列表及网络协议输入；格式识别不代替 ffmpeg 解码有效性检查。
+- 转为 16kHz、单声道、16-bit PCM；按解码后的字节数拒绝超过 60 秒音频，不截断后冒充完整答案。ffmpeg 最长 8 秒、输出有上限，超时杀进程并等待退出；各路径清理独立临时目录。
+- 同用户一次一个请求、每分钟最多 8 次；每个服务进程最多 4 个并发。限流为内存级，重启会重置，多实例需在网关或共享存储增加总量限制，不声称已具备集群配额。
+- `BAIDU_API_KEY` 与 `BAIDU_SECRET_KEY` 缺失返回 503；不再依赖 SDK 的 APP_ID 参数。Token 获取超时 5 秒、识别超时 12 秒，均禁止重定向，不自动重试付费识别。
+- 400 为无效录音，422 为无清晰语音，429 为用户限流，502/503/504 为上游异常、不可用或超时。浏览器保留录音与文字并提供重试。只返回经过映射的错误，不返回原始上游消息、凭据、音频或临时路径。
+- `test/integration/speech-http.cjs` 以真实 Controller/JWT/DTO/ffmpeg 和 Stub 供应商验证四种编码、超长、损坏、字段注入及临时清理；`speech-local.spec.ts` 额外验证浏览器真实录音经 Next 代理到转码。实际百度识别质量另行验收。

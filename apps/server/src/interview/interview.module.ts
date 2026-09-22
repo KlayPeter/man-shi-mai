@@ -1,3 +1,6 @@
+import { AudioTranscoderService } from './services/audio-transcoder.service';
+import { BaiduSpeechService } from './services/baidu-speech.service';
+import { InterviewSpeechService } from './services/interview-speech.service';
 import { Module } from '@nestjs/common';
 import { InterviewReportService } from './services/interview-report.service';
 import { InterviewController } from './interview.controller';
@@ -46,6 +49,9 @@ import {
   ],
   controllers: [InterviewController],
   providers: [
+    AudioTranscoderService,
+    BaiduSpeechService,
+    InterviewSpeechService,
     InterviewReportService,
     InterviewService,
     InterviewAIService,

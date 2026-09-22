@@ -127,3 +127,17 @@ GitHub Actions 在 `main` 推送和 PR 时执行冻结锁文件安装及 `pnpm c
 两个原仓库的主分支历史保留在本仓库提交图中，详见 [迁移记录](docs/monorepo-migration.md)。两个本地旧目录已从工作区移除（移至系统废纸篓保留恢复能力），新功能统一在 `apps/` 开发。
 
 开发前阅读根目录 [AGENTS.md](AGENTS.md) 与对应应用的 `ai/Agent.md`。提交采用 Conventional Commits 和中文描述。
+
+### 语音识别部署
+
+后端配置 `BAIDU_API_KEY` 与 `BAIDU_SECRET_KEY` 后使用百度短语音 HTTPS REST 接口；两者缺失时返回 503，用户仍可文字回答。`BAIDU_APP_ID` 不再是该链路必填项。面试官朗读使用浏览器 TTS。
+
+部署需支持随包 ffmpeg 执行及可写系统临时目录。录音文件最大 4 MB，后端按解码后音频验证最多 60 秒；前端每段 55 秒并支持追加。当前限流是每进程 4 并发、每用户每分钟 8 次且同用户单并发，多实例上线前必须补网关或共享限流。生产浏览器录音需要 HTTPS（localhost 开发例外）；上线前需在实际设备和专用百度账户验证识别质量与额度。
+
+本地无外部识别费用的链路检查（先构建后端，需要空闲 3005 端口）：
+
+```bash
+RUN_LOCAL_INTEGRATION=1 node apps/server/test/integration/speech-http.cjs
+```
+
+该脚本使用真实鉴权、DTO 和 ffmpeg，只有识别供应商被替换为 Stub；不证明实际百度服务已经开通。

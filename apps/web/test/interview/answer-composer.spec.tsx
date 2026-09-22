@@ -3,7 +3,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest'
 import AnswerComposer from '@/components/interview/AnswerComposer'
 const speech = vi.hoisted(() => ({ transcribe: vi.fn() }))
-vi.mock('@/api/interview-speech', () => ({ transcribeInterviewAudio: speech.transcribe }))
+vi.mock('@/api/interview-speech', () => ({ transcribeInterviewAudio: speech.transcribe, speechFailureMessage: () => '转写失败，录音已保留' }))
 const recorder = vi.hoisted(() => ({ start: vi.fn(), cancel: vi.fn(), stop: vi.fn(), result: Promise.resolve(new Blob(['audio'])) }))
 vi.mock('@/lib/interview-recorder', () => ({ RECORDING_LIMIT_SECONDS: 55, InterviewRecorder: class { start = recorder.start; cancel = recorder.cancel; stop = recorder.stop; result = recorder.result }, recordingError: () => '麦克风未获授权，可以直接输入回答。' }))
 let host: HTMLDivElement, root: Root

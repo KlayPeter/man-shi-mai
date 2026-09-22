@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Icon from '@/components/ui/Icon'
 import { InterviewRecorder, RECORDING_LIMIT_SECONDS, recordingError } from '@/lib/interview-recorder'
-import { transcribeInterviewAudio } from '@/api/interview-speech'
+import { transcribeInterviewAudio, speechFailureMessage } from '@/api/interview-speech'
 
 type VoiceState = 'idle' | 'requesting' | 'recording' | 'transcribing' | 'ready' | 'error'
 interface Props { value: string; onChange: (value: string) => void; onSend: (value: string) => void; disabled: boolean; onBeforeRecord: () => void }
@@ -54,9 +54,9 @@ export default function AnswerComposer({ value, onChange, onSend, disabled, onBe
       const current = valueRef.current.trim()
       changeRef.current(current ? `${current}\n${text}` : text)
       setState('ready'); busyRef.current = false
-    } catch {
+    } catch (failure) {
       if (generation.current !== id || controller.signal.aborted) return
-      setError('转写未完成，录音已保留。可以重试转写，也可以直接输入回答。')
+      setError(speechFailureMessage(failure))
       setState('error'); busyRef.current = false
     } finally { if (request.current === controller) request.current = null }
   }
