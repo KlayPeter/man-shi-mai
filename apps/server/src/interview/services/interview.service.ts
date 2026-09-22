@@ -23,6 +23,7 @@ import {
   ResumeQuizResultDocument,
 } from '../schemas/interview-quiz-result.schema';
 import { DocumentParserService } from './document-parser.service';
+import { InterviewReportService } from './interview-report.service';
 import { InterviewAIService } from './interview-ai.service';
 import { InterviewAgentService } from './interview-agent.service';
 import { AIInterviewType } from '../schemas/ai-interview-result.schema';
@@ -36,10 +37,7 @@ import {
   AIInterviewResult,
   AIInterviewResultDocument,
 } from '../schemas/ai-interview-result.schema';
-import {
-  ResumeQuizAnalysisDto,
-  ReportStatus,
-} from '../dto/analysis-report.dto';
+import { ResumeQuizAnalysisDto } from '../dto/analysis-report.dto';
 
 import {
   UserTransaction,
@@ -160,6 +158,7 @@ export class InterviewService {
     private documentParserService: DocumentParserService,
     private aiService: InterviewAIService,
     private agentService: InterviewAgentService,
+    private reports: InterviewReportService,
     @InjectModel(ConsumptionRecord.name)
     private consumptionRecordModel: Model<ConsumptionRecordDocument>,
     @InjectModel(ResumeQuizResult.name)
@@ -2262,44 +2261,40 @@ export class InterviewService {
     });
 
     if (aiInterviewResult) {
-      // 检查报告生成状态
-      const reportStatus =
-        aiInterviewResult.reportStatus || ReportStatus.PENDING;
-
-      if (reportStatus === ReportStatus.PENDING) {
-        this.generateAssessmentReportAsync(resultId);
+      const review = await this.reports.read(userId, resultId);
+      if (review.status !== 'completed' || !review.report) {
+        throw new BadRequestException({
+          message: review.message || '报告尚未生成，请在复盘页发起生成',
+          error: { reportStatus: review.status },
+        });
       }
-
-      if (
-        reportStatus === ReportStatus.PENDING ||
-        reportStatus === ReportStatus.GENERATING
-      ) {
-        throw new BadRequestException(
-          '评估报告正在生成中，请稍后再试（预计1-2分钟）',
-        );
-      }
-
-      // 再发生错误后，再次尝试生成
-      if (reportStatus === ReportStatus.FAILED) {
-        this.generateAssessmentReportAsync(resultId);
-        throw new BadRequestException(
-          '评估报告正在生成中，请稍后再试（预计1-2分钟）',
-        );
-      }
-
-      // 报告已生成，转换为统一格式返回
-      // 将 improvements 转换为 learningPriorities 格式，保持前端数据结构统一
-      const learningPriorities = (aiInterviewResult.improvements || []).map(
-        (item) => ({
+      // 保留旧查询地址，但只读且使用一致字段，不再隐式触发模型。
+      return {
+        resultId,
+        type: aiInterviewResult.interviewType,
+        company: review.company,
+        position: review.position,
+        matchScore: review.report.overallScore,
+        matchLevel: review.report.overallLevel,
+        summary: review.report.summary,
+        strengths: review.report.strengths,
+        weaknesses: review.report.weaknesses,
+        radarData: review.report.radarData.map((item) => ({
+          label: item.dimension,
+          value: item.score,
+        })),
+        matchedSkills: [],
+        missingSkills: [],
+        knowledgeGaps: [],
+        interviewTips: [],
+        learningPriorities: review.report.improvements.map((item) => ({
           topic: item.category,
           reason: item.suggestion,
-          priority: item.priority || 'medium',
-        }),
-      );
-
-      return {
-        ...aiInterviewResult.toObject(),
-        learningPriorities,
+          priority: item.priority,
+        })),
+        totalQuestions: review.questions.length,
+        questionDistribution: {},
+        viewCount: aiInterviewResult.viewCount,
       };
     }
 
@@ -2373,173 +2368,6 @@ export class InterviewService {
       questionDistribution: result.questionDistribution || {}, // 问题分布情况，默认为空对象
       viewCount: result.viewCount, // 最新的查看次数
     };
-  }
-
-  /**
-   * 异步生成评估报告
-   * 在面试结束后后台静默生成，不阻塞接口返回
-   */
-  private async generateAssessmentReportAsync(resultId: string): Promise<void> {
-    try {
-      // 从数据库读取面试记录
-      const dbResult = await this.aiInterviewResultModel.findOne({ resultId });
-
-      if (!dbResult) {
-        this.logger.error(`❌ 未找到面试记录: resultId=${resultId}`);
-        throw new NotFoundException(`未找到面试记录: ${resultId}`);
-      }
-
-      // 如果当前的状态为 “生成中”，就不需要进行后续的操作了
-      if (dbResult.reportStatus === 'generating') {
-        this.logger.log(`🎯 评估报告正在生成中: resultId=${resultId}`);
-        return;
-      }
-
-      // 更新状态为"生成中"
-      await this.aiInterviewResultModel.findOneAndUpdate(
-        { resultId },
-        { $set: { reportStatus: 'generating' } },
-      );
-
-      // 从数据库的 qaList 中提取问答对
-      const qaList: Array<{
-        question: string;
-        answer: string;
-        standardAnswer?: string;
-      }> = (dbResult.qaList.filter((qa) => qa) || []).map((qa) => ({
-        question: qa?.question,
-        answer: qa?.answer,
-        standardAnswer: qa?.standardAnswer,
-      }));
-
-      this.logger.log(
-        `🎯 开始异步生成评估报告: resultId=${resultId}, qaCount=${qaList.length}`,
-      );
-
-      // 数据验证：检查是否有有效的问答对
-      if (qaList.length === 0) {
-        this.logger.warn(`⚠️ 没有有效的问答记录，生成默认低分报告`);
-
-        // 直接保存默认的低分评估，不调用 AI
-        await this.aiInterviewResultModel.findOneAndUpdate(
-          { resultId },
-          {
-            $set: {
-              overallScore: 30,
-              overallLevel: '需提升',
-              overallComment:
-                '本次面试未能有效进行，候选人没有回答任何问题，无法评估专业能力。建议重新安排面试。',
-              radarData: [
-                { dimension: '技术能力', score: 0, description: '未评估' },
-                { dimension: '项目经验', score: 0, description: '未评估' },
-                { dimension: '问题解决', score: 0, description: '未评估' },
-                { dimension: '学习能力', score: 0, description: '未评估' },
-                { dimension: '沟通表达', score: 0, description: '未评估' },
-              ],
-              strengths: [],
-              weaknesses: ['未参与面试问答', '无法评估专业能力'],
-              improvements: [
-                {
-                  category: '面试准备',
-                  suggestion: '建议充分准备后重新参加面试',
-                  priority: 'high',
-                },
-              ],
-              fluencyScore: 0,
-              logicScore: 0,
-              professionalScore: 0,
-              reportStatus: 'completed',
-              reportGeneratedAt: new Date(),
-            },
-          },
-        );
-
-        this.logger.log(`✅ 默认低分报告已生成: resultId=${resultId}`);
-        return;
-      }
-
-      // 计算回答质量指标
-      const totalAnswerLength = qaList.reduce(
-        (sum, qa) => sum + qa.answer.length,
-        0,
-      );
-      const avgAnswerLength = totalAnswerLength / qaList.length;
-      const emptyAnswers = qaList.filter(
-        (qa) => qa.answer.trim().length < 10,
-      ).length;
-
-      this.logger.log(
-        `📊 回答质量统计: 总问题=${qaList.length}, 平均回答长度=${Math.round(avgAnswerLength)}, 无效回答=${emptyAnswers}`,
-      );
-
-      // 从 sessionState 中获取 resumeContent（如果存在）
-      const resumeContent = dbResult.sessionState?.resumeContent || '';
-
-      // 转换 interviewType：数据库中是 'special' | 'behavior'，AI 服务需要 'special' | 'comprehensive'
-      const interviewType =
-        dbResult.interviewType === 'special' ? 'special' : 'comprehensive';
-
-      // 调用 AI 生成评估报告
-      const assessment = await this.aiService.generateInterviewAssessmentReport(
-        {
-          interviewType,
-          company: dbResult.company || '',
-          positionName: dbResult.position || '',
-          jd: dbResult.jobDescription || '',
-          resumeContent,
-          qaList,
-          // 传递额外的质量指标供 AI 参考
-          answerQualityMetrics: {
-            totalQuestions: qaList.length,
-            avgAnswerLength: Math.round(avgAnswerLength),
-            emptyAnswersCount: emptyAnswers,
-          },
-        },
-      );
-
-      // 更新数据库中的评估数据
-      await this.aiInterviewResultModel.findOneAndUpdate(
-        { resultId },
-        {
-          $set: {
-            overallScore: assessment.overallScore,
-            overallLevel: assessment.overallLevel,
-            overallComment: assessment.overallComment,
-            radarData: assessment.radarData,
-            strengths: assessment.strengths,
-            weaknesses: assessment.weaknesses,
-            improvements: assessment.improvements,
-            fluencyScore: assessment.fluencyScore,
-            logicScore: assessment.logicScore,
-            professionalScore: assessment.professionalScore,
-            reportStatus: 'completed',
-            reportGeneratedAt: new Date(),
-          },
-        },
-      );
-
-      this.logger.log(
-        `✅ 评估报告生成成功: resultId=${resultId}, overallScore=${assessment.overallScore}`,
-      );
-    } catch (error) {
-      this.logger.error(
-        `❌ 评估报告生成失败: resultId=${resultId}, error=${error.message}`,
-        error.stack,
-      );
-
-      // 更新状态为"失败"
-      await this.aiInterviewResultModel.findOneAndUpdate(
-        { resultId },
-        {
-          $set: {
-            reportStatus: 'failed',
-            reportError: error.message,
-          },
-        },
-      );
-
-      throw error;
-    }
   }
 
   /**

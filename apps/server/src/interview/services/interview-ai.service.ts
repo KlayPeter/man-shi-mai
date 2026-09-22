@@ -15,6 +15,11 @@ import {
   buildMockInterviewPrompt,
   buildAssessmentPrompt,
 } from '../prompts/mock-interview.prompts';
+import {
+  AssessmentContext,
+  AssessmentOutput,
+  validateAssessment,
+} from '../schemas/assessment-output';
 import { LogAICall } from '../../common/decorators/log-ai-call.decorator';
 
 /**
@@ -517,73 +522,32 @@ export class InterviewAIService {
    * 生成面试评估报告
    * 基于用户的回答、职位描述、简历等信息，调用AI模型分析并生成一份完整的评估报告
    */
-  async generateInterviewAssessmentReport(context): Promise<any> {
-    try {
-      // 1. 构建提示(Prompt)
-      // 根据传入的上下文信息（如面试类型、问答列表等）构建一个给AI模型的详细指令。
-      const prompt = buildAssessmentPrompt(context);
-      const promptTemplate = PromptTemplate.fromTemplate(prompt);
-
-      // 2. 初始化AI模型和处理链
-      // 创建一个默认的AI模型实例
-      const model = this.aiModelFactory.createDefaultModel();
-      // 创建一个JSON解析器，用于将AI模型的输出（期望是JSON字符串）转换成JS对象
-      const parser = new JsonOutputParser();
-      // 创建一个处理链：将格式化后的prompt传给model，再将model的输出传给parser进行解析
-      const chainWithParser = promptTemplate.pipe(model).pipe(parser);
-
-      // 记录开始生成的日志信息
-      this.logger.log(
-        `🤖 开始生成面试评估报告: type=${context.interviewType}, qaCount=${context.qaList.length}`,
-      );
-      const startTime = Date.now(); // 记录开始时间，用于计算耗时
-
-      // 3. 调用AI模型并获取结果
-      // 异步调用处理链，并传入详细的面试数据
-      const result: any = await chainWithParser.invoke({
-        interviewType: context.interviewType, // 面试类型
-        company: context.company || '', // 公司名称
-        positionName: context.positionName || '未提供', // 职位名称
-        jd: context.jd || '未提供', // 职位描述 (Job Description)
-        resumeContent: context.resumeContent, // 简历内容
-        // 将问答列表格式化成一个长字符串，包含问题、用户回答、回答长度和标准答案
+  async generateInterviewAssessmentReport(
+    context: AssessmentContext,
+    signal?: AbortSignal,
+  ): Promise<AssessmentOutput> {
+    const prompt = PromptTemplate.fromTemplate(buildAssessmentPrompt(context));
+    const model = this.aiModelFactory.createDefaultModel();
+    const chain = prompt.pipe(model).pipe(new JsonOutputParser());
+    const result: unknown = await chain.invoke(
+      {
+        interviewType: context.interviewType,
+        company: context.company,
+        positionName: context.positionName,
+        jd: context.jd,
+        resumeContent: context.resumeContent,
         qaList: context.qaList
           .map(
             (qa, index) =>
-              `问题${index + 1}: ${qa.question}\\n用户回答: ${qa.answer}\\n回答长度: ${qa.answer.length}字\\n标准答案: ${qa.standardAnswer || '无'}`,
+              `问题${index + 1}: ${qa.question}\n用户回答: ${qa.answer}\n参考答案（仅辅助，可能不完整）: ${qa.standardAnswer || '未提供'}`,
           )
-          .join('\\n\\n'), // 每个问答对之间用换行符隔开
-        totalQuestions: context.qaList.length, // 总问题数
-        // 如果有回答质量指标，也格式化成字符串
-        qualityMetrics: context.answerQualityMetrics
-          ? `\\n## 回答质量统计\\n- 总问题数: ${context.answerQualityMetrics.totalQuestions}\\n- 平均回答长度: ${context.answerQualityMetrics.avgAnswerLength}字\\n- 无效回答数: ${context.answerQualityMetrics.emptyAnswersCount}`
-          : '',
-      });
-
-      const duration = Date.now() - startTime; // 计算生成报告的总耗时
-      this.logger.log(
-        `✅ 评估报告生成完成: 耗时=${duration}ms, overallScore=${result.overallScore}`,
-      );
-
-      // 4. 格式化并返回最终结果
-      // 从AI返回的结果中提取关键信息，并为可能缺失的字段提供默认值，确保返回对象的结构稳定
-      return {
-        overallScore: result.overallScore || 75, // 综合得分
-        overallLevel: result.overallLevel || '良好', // 综合评级
-        overallComment: result.overallComment || '面试表现良好', // 综合评语
-        radarData: result.radarData || [], // 能力雷达图数据
-        strengths: result.strengths || [], // 优点
-        weaknesses: result.weaknesses || [], // 缺点
-        improvements: result.improvements || [], // 改进建议
-        fluencyScore: result.fluencyScore || 80, // 表达流畅度得分
-        logicScore: result.logicScore || 80, // 逻辑清晰度得分
-        professionalScore: result.professionalScore || 80, // 专业知识得分
-      };
-    } catch (error) {
-      // 5. 错误处理
-      // 如果在生成过程中发生任何错误，记录详细的错误日志并抛出异常
-      this.logger.error(`❌ 生成评估报告失败: ${error.message}`, error.stack);
-      throw error;
-    }
+          .join('\n\n'),
+      },
+      { signal },
+    );
+    return validateAssessment(
+      result,
+      context.qaList.map((qa) => qa.answer),
+    );
   }
 }

@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { InterviewReportService } from './services/interview-report.service';
 import { InterviewService } from './services/interview.service';
 import { ResumeQuizDto } from './dto/resume-quiz.dto';
 import {
@@ -28,7 +29,10 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 @Controller('interview')
 @UseGuards(JwtAuthGuard)
 export class InterviewController {
-  constructor(private readonly interviewService: InterviewService) {}
+  constructor(
+    private readonly interviewService: InterviewService,
+    private readonly reports: InterviewReportService,
+  ) {}
 
   /**
    * 8.3-LangChain 实战-分析报告
@@ -307,6 +311,24 @@ export class InterviewController {
     );
 
     return ResponseUtil.success(result, '面试已恢复，可以继续回答');
+  }
+
+  @Get('mock/review/:resultId')
+  @ApiOperation({ summary: '只读面试复盘状态与原问答' })
+  getMockReview(
+    @Param('resultId') resultId: string,
+    @Request() req: { user: { userId: string } },
+  ) {
+    return this.reports.read(req.user.userId, resultId);
+  }
+
+  @Post('mock/review/:resultId/generate')
+  @ApiOperation({ summary: '生成或恢复面试复盘，不扣练习次数' })
+  generateMockReview(
+    @Param('resultId') resultId: string,
+    @Request() req: { user: { userId: string } },
+  ) {
+    return this.reports.requestGeneration(req.user.userId, resultId);
   }
 
   /**

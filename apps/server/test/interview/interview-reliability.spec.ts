@@ -3,6 +3,7 @@ import { getModelToken } from '@nestjs/mongoose';
 import { ConfigService } from '@nestjs/config';
 import { lastValueFrom, timeout, toArray } from 'rxjs';
 import { SessionManager } from '../../src/ai/services/session.manager';
+import { InterviewReportService } from '../../src/interview/services/interview-report.service';
 import { InterviewService } from '../../src/interview/services/interview.service';
 import { ResumeAnalysisService } from '../../src/interview/services/resume-analysis.service';
 import { ConversationContinuationService } from '../../src/interview/services/conversation-continuation.service';
@@ -38,6 +39,7 @@ describe('interview reliability', () => {
         SessionManager,
         ...[
           ConfigService,
+          InterviewReportService,
           ResumeAnalysisService,
           DocumentParserService,
           InterviewAIService,

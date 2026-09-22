@@ -9,7 +9,7 @@ import RadarChart from '@/components/interview/RadarChart'
 import { toast } from '@/stores/toastStore'
 import { useInterviewStore } from '@/stores/interviewStore'
 import request from '@/lib/request'
-import { marked } from 'marked'
+import InterviewReview from '@/components/interview/InterviewReview'
 
 interface SkillItem {
   skill: string
@@ -78,7 +78,8 @@ export default function ReportPageContent() {
   const [reportData, setReportData] = useState<ReportData>(defaultReport)
   const [loading, setLoading] = useState(true)
   const [showTrainingModal, setShowTrainingModal] = useState(false)
-  const [isGenerating, setIsGenerating] = useState(false)
+  const [error, setError] = useState('')
+  const [retry, setRetry] = useState(0)
 
   useEffect(() => {
     if (!resultId) {
@@ -86,36 +87,21 @@ export default function ReportPageContent() {
       router.replace('/interview/start')
       return
     }
-    fetchReport()
-  }, [resultId])
-
-  const fetchReport = async () => {
-    try {
-      setLoading(true)
-      const res = await request.get(`/interview/analysis/report/${resultId}`)
-      setReportData(res as unknown as ReportData)
-      setIsGenerating(false)
+    if (serviceType !== 'resume') return
+    const controller = new AbortController()
+    setLoading(true)
+    setError('')
+    request.get<unknown, ReportData>(`/interview/analysis/report/${encodeURIComponent(resultId)}`, { signal: controller.signal }).then(report => {
+      if (controller.signal.aborted) return
+      setReportData(report)
       setLoading(false)
-    } catch (err: any) {
-      // 检查多种可能的错误消息位置
-      const errorMsg = err?.response?.data?.message || err?.message || err?.toString() || ''
-      const isReportGenerating = errorMsg.includes('生成') || errorMsg.includes('报告') || errorMsg.includes('GENERATING')
-
-      if (isReportGenerating) {
-        setIsGenerating(true)
-        // 显示友好的提示信息
-        toast({
-          title: '评估报告生成中',
-          description: errorMsg || '报告正在生成，预计1-2分钟，系统将自动刷新',
-          color: 'blue'
-        })
-        setTimeout(() => fetchReport(), 5000)
-      } else {
-        setLoading(false)
-        toast({ title: '获取报告失败', description: errorMsg || '请稍后重试', color: 'red' })
-      }
-    }
-  }
+    }).catch(() => {
+      if (controller.signal.aborted) return
+      setLoading(false)
+      setError('暂时无法读取报告，请核对记录或稍后重试。')
+    })
+    return () => controller.abort()
+  }, [resultId, serviceType, router, retry])
 
   const handleRestart = () => {
     interviewStore.reset()
@@ -138,17 +124,17 @@ export default function ReportPageContent() {
     return isRelated && score < 70
   })()
 
+  if (serviceType !== 'resume' && resultId) return <InterviewReview resultId={resultId} />
+  if (error) return <div role="alert" className="p-8"><p>{error}</p><button onClick={() => setRetry(value => value + 1)} className="mt-5 min-h-11 rounded-full border border-line px-6">重新读取</button></div>
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <Icon name="i-heroicons-arrow-path" className="w-10 h-10 text-primary-500 animate-spin" />
           <p className="text-slate-500 text-sm">
-            {isGenerating ? '评估报告正在生成中，预计1-2分钟...' : '正在加载评估报告...'}
+            正在加载评估报告…
           </p>
-          {isGenerating && (
-            <p className="text-xs text-slate-400">系统会自动刷新，请稍候</p>
-          )}
         </div>
       </div>
     )
@@ -206,8 +192,7 @@ export default function ReportPageContent() {
                 </div>
                 <div
                   className="text-neutral-600 leading-relaxed mb-6 prose prose-sm max-w-none"
-                  dangerouslySetInnerHTML={{ __html: marked.parse(reportData.summary || '') as string }}
-                />
+                >{reportData.summary || ''}</div>
 
                 {showTrainingButton && (
                   <div className="mb-6">

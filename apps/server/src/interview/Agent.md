@@ -60,7 +60,7 @@ graph TD
 ## 5. 开发约束与边界处理 / Constraints & Guidelines
 - **SSE 流传输约束**: 在所有流式输出接口（如 `mock/start`、`mock/answer`）中，**必须**显式设定响应 Header (如 `Content-Type: text/event-stream; charset=utf-8`，`Cache-Control: no-cache`，禁用 Nginx 缓冲等)。
 - **订阅释放**: 在 SSE 请求中，客户端意外关闭连接（`res.on('close')`）时，**必须**主动取消 RxJS 的 `Subscription` 订阅，以防止发生服务器后台线程泄露。
-- **判分逻辑**: 最终判分必须覆盖 matchedSkills (匹配技能点) 和 missingSkills (缺失技能点)，确保前台雷达图能获取到完整的数据。
+- **判分逻辑**: 押题分析与实际回答评估分开。模拟面试未观测的维度不能强凑分数，报告必须区分生成状态与面试状态；新生成反馈引用本场回答原文。
 
 ## 6. 本地调试与排查 / Debugging & Verification
 - **流式调试**: 建议使用 `curl` 命令行直接调试流式响应，例如：
@@ -78,3 +78,32 @@ graph TD
 - SSE 订阅在响应关闭时清理；取消订阅不等于底层模型调用已取消。Node 请求对象的 close 表示请求读取结束，不能用它判断整个响应已断开（[Node HTTP 文档](https://nodejs.org/api/http.html#event-close_3)）。
 
 - 文件解析仅允许当前配置 OSS Bucket 内本人的简历目录，由 `StsService` 重新生成短期读取签名；不追随重定向。文本清理保留英文单词空格和段落，避免破坏内容。
+
+## 复盘服务与任务恢复
+
+`InterviewReportService` 已从面试编排中抽取，负责模拟面试复盘读取、任务领取、生成和失败恢复。它复用 `InterviewAIService` 与现有模型工厂，不是新增 Agent 或 Jev 接入。
+
+- `GET /interview/mock/review/:resultId`：只读本人原问答、分析和状态；不会调用模型。
+- `POST /interview/mock/review/:resultId/generate`：面试结束后由用户发起生成/重试；不扣练习次数，但会调用已配置模型。
+- 状态为 `not_ready/pending/generating/completed/failed/insufficient_data`。无有效回答时返回信息不足，不生成默认低分。生成失败仍可回看问答；不存在或非本人记录为 404。
+- 旧 `/interview/analysis/report/:resultId` 保留押题分析，以及已完成模拟报告的字段适配；改为只读，不再在 GET 中自动生成/重试。应配套发布新版复盘页，旧前端无法通过轮询启动待生成报告。
+
+```mermaid
+flowchart TD
+    A[读取本人复盘] --> B[原问答与明确状态]
+    B --> C[用户发起分析或重试]
+    C --> D{原子领取 120 秒租约}
+    D -- 已有任务 --> B
+    D -- 成功 --> E[模型分析 90 秒取消信号]
+    E --> F[Zod 结构与原文引用校验]
+    F -- 通过 --> G[匹配领取凭据后保存报告与版本]
+    F -- 失败 --> H[保存失败状态 保留原问答]
+    H --> C
+```
+
+- 单场最多 3 次尝试，领取在同一文档中条件更新。旧无租约的 generating 记录及过期任务视为可恢复；用户再次发起时领取，不在启动时批量迁移，也没有后台扫描队列。
+- 保存成功/失败都匹配 `reportLeaseToken`，防止旧任务覆盖重试结果。取消信号不保证供应商立即停算，过期恢复也不承诺模型费用严格一次；持久化结果有写入隔离。
+- `assessment-output.ts` 的 `interview-evidence-v1` 规定分数可空、范围校验、反馈问题序号和连续原文引用；引用必须存在于对应回答。文本不能判断真实语音流畅度，fluencyScore 强制为 null。模型输出缺失字段直接失败，不再补 75/80 分。
+- `reportEvidence/reportRubricVersion` 只在新报告生成后保存；历史记录无证据就显示缺失，不批量重生成或伪造。原文存在只能验证引用真实性，不代表已经验证评价语义与评分质量。
+- 接口只返回复盘所需字段，不返回 sessionState、简历快照、任务领取凭据和供应商原始错误。
+- 单元测试见 `test/interview/interview-report.spec.ts`；真实数据库并发/租约测试见 `test/integration/report-recovery.cjs`（AI Stub）；真实 HTTP 只读状态验证见 `report-http.cjs`。模型实际质量尚需独立评估。

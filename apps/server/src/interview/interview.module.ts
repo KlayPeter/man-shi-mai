@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { InterviewReportService } from './services/interview-report.service';
 import { InterviewController } from './interview.controller';
 import { InterviewService } from './services/interview.service';
 import { InterviewAIService } from './services/interview-ai.service';
@@ -45,6 +46,7 @@ import {
   ],
   controllers: [InterviewController],
   providers: [
+    InterviewReportService,
     InterviewService,
     InterviewAIService,
     InterviewAgentService,

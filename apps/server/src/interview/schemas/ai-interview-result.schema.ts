@@ -1,3 +1,4 @@
+import type { AssessmentOutput } from './assessment-output';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types, Schema as MongooseSchema } from 'mongoose';
 
@@ -256,10 +257,25 @@ export class AIInterviewResult {
   sessionState?: any; // 保存完整会话状态（用于恢复）
 
   @Prop({
-    enum: ['pending', 'generating', 'completed', 'failed'],
+    enum: ['pending', 'generating', 'completed', 'failed', 'insufficient_data'],
     default: 'pending',
   })
   reportStatus: string; // 评估报告生成状态
+
+  @Prop({ default: 0 })
+  reportAttempts: number;
+
+  @Prop()
+  reportLeaseToken?: string;
+
+  @Prop()
+  reportLeaseExpiresAt?: Date;
+
+  @Prop()
+  reportRubricVersion?: string;
+
+  @Prop({ type: [MongooseSchema.Types.Mixed], default: [] })
+  reportEvidence?: AssessmentOutput['evidence'];
 
   @Prop()
   reportGeneratedAt?: Date; // 报告生成完成时间

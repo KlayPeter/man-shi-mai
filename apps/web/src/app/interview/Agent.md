@@ -38,6 +38,15 @@ flowchart TD
 
 ## 报告与验证
 
-报告页从 `GET /interview/analysis/report/:resultId` 获取结构化评估，使用 RadarChart 展示能力维度，并展示匹配技能、缺失项和建议。缺少 resultId 时返回准备页。
+押题报告沿用 `GET /interview/analysis/report/:resultId`；模拟面试的 special/behavior 进入 `components/interview/InterviewReview.tsx`，通过 `src/api/interview-review.ts` 查询新复盘接口。缺少 resultId 时返回准备页。
 
 `e2e/ui-redesign.spec.ts` 使用 Mock API 验证断点布局、简历预选、岗位键盘选择、下一步条件、类型弹窗与进入 input。它不发起真实 SSE、模型调用或权益扣减；完整会话、语音授权、断连恢复与交易仍需独立联调。相关修改必须保留流取消、定时器和监听清理逻辑。
+
+### 模拟面试复盘
+
+- 页面先显示本场重点（至多一点优势、两点改进），每项附原文引用、下一次练习建议和原回答锚点；没有足够依据时不强凑数量。完整分析折叠展示，至少 3 个有效维度才画雷达图，其余保留文字。
+- 原问答独立于生成结果展示；历史没有单题评价或引用时明确标记缺失。所有模型文本作为 React 文本渲染，不直接执行 HTML。
+- GET `/interview/mock/review/:resultId` 只读；pending/failed 且服务端允许时可 POST 同路径 `/generate` 发起分析，不在 GET 或错误重试中隐式调用模型。
+- 仅 generating 状态每 3 秒查询，最多 40 次；404、失败及网络错误停止自动刷新。切换 resultId 或离开页面取消请求并清除计时器。手动刷新保留同场已加载问答。
+- `not_ready` 提供返回场次入口；`insufficient_data` 不显示低分。前端校验状态、分数范围和引用与原文的关联，不把 malformed 响应显示为完成。
+- `e2e/report-local.spec.ts` 使用独立数据库的合成报告与真实 HTTP，验证锚点、手机布局、状态区分、404 不循环和离开后停止轮询。它不证明真实模型评分质量。
