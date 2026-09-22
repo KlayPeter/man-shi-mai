@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+node apps/web/ai/skills/update-skills.js
+node apps/server/ai/skills/update-skills.js
+git add apps/web/ai/skills/README.md apps/server/ai/skills/README.md

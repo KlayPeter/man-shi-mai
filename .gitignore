@@ -1,39 +1,41 @@
-# dependencies
-/node_modules
-/.pnp
-.pnp.js
+# Original standalone repositories, retained only as local references
+/man-shi-mai-web/
+/man-shi-mai-server/
 
-# testing
-/coverage
-
-# next.js
-/.next/
-/out/
-
-# production
-/build
-
-# misc
-.DS_Store
-*.pem
-
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# local env files
-.env*.local
-.env.development
-.env.production
-
-# vercel
-.vercel
-
-# typescript
+node_modules/
+.next/
+dist/
+build/
+out/
+coverage/
+logs/
+*.log
 *.tsbuildinfo
 next-env.d.ts
+test-results/
+playwright-report/
+.DS_Store
+.env
+.env.*
+!.env.example
+.claude/
+.vercel/
+.idea/
+.vscode/
+*.pem
+*.key
+bun.lock
+bun.lockb
+package-lock.json
+yarn.lock
 
-# Playwright
-/test-results/
-/playwright-report/
+# Keep the root's pre-existing personal reference documents local.
+/agent_design_blueprint.md
+/agent_stage1_guide.md
+/agent_stage2_guide.md
+/agent_stage3_guide.md
+/agent_stage4_guide.md
+/codegraph-codex-guide.md
+/learning_agent_tutorial.md
+/learning_harness_tutorial.md
+/resume-migration-plan.md
