@@ -128,6 +128,14 @@ describe('UserService', () => {
       });
 
       expect(userModel.findOne).toHaveBeenCalled();
+      expect(userModel).toHaveBeenCalledWith({
+        username: 'testuser',
+        email: 'test@example.com',
+        password: 'password123',
+        resumeRemainingCount: 1,
+        specialRemainingCount: 1,
+        behaviorRemainingCount: 1,
+      });
       expect(result).toEqual({
         _id: 'user-123',
         username: 'testuser',
@@ -145,6 +153,7 @@ describe('UserService', () => {
           password: 'password123',
         }),
       ).rejects.toThrow(BadRequestException);
+      expect(userModel).not.toHaveBeenCalled();
     });
   });
 

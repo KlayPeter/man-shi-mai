@@ -57,6 +57,9 @@ export class UserService {
       username,
       email,
       password,
+      resumeRemainingCount: 1,
+      specialRemainingCount: 1,
+      behaviorRemainingCount: 1,
     });
 
     await newUser.save();
