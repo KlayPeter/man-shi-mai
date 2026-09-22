@@ -70,6 +70,12 @@ export class PaymentRecord {
   processingAt?: Date; // 开始处理时间
 
   @Prop()
+  processingToken?: string;
+
+  @Prop()
+  processingExpiresAt?: Date;
+
+  @Prop()
   createdAt?: Date; // 创建时间
 }
 

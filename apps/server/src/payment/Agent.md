@@ -1,68 +1,49 @@
-# Backend Module: Payment Integration & Benefits (支付对接与权益系统)
+# 支付订单与测试权益
 
-## 1. 业务功能概述 / Business Functionality
-- **核心业务逻辑**: 处理充值订单发起、调用虚拟/微信/支付宝网关、支付状态同步查询、支付成功的回调处理，以及为用户累加对应的套餐权益（小麦币、单次技术面试包、无限次高级面试包等）。
-- **用户故事 / 核心流程**:
-  1. 用户在前端选择购买一个套餐（如 "Pro" 套餐，18.8 元）。
-  2. 客户端请求后端发起支付，后端生成订单 ID 及订单记录落库，调用支付网关。
-  3. 用户进行支付。支付完成后，后端通过主动轮询或网关异步回调收到交易成功通知。
-  4. 后端进行状态幂等校验与金额审核，通过后为用户账户增量累加权益，并在流水表中记录一条 `RECHARGE` 类型记录。
+本模块目前提供订单只读查询，以及仅限开发/测试环境的模拟发放。支付宝与微信供应商文件只是未接入的预留实现，没有正式支付回调链路。不能将模拟记录当作真实付款凭证。
 
-## 2. 核心业务流程图 / Core Business Workflows (Mermaid)
+## 接口与配置
+
+所有接口由 `PaymentController` 的 `JwtAuthGuard` 保护，身份取自 JWT：
+
+| 接口 | 行为 |
+| --- | --- |
+| `GET /payment/capabilities` | 当前是否可用、原因和服务端套餐目录 |
+| `POST /payment/order` | 校验金额、币种、通道与用户，保存模拟订单 |
+| `POST /payment/order/status` | 只读本人订单状态；不查询模拟网关或发放权益 |
+| `POST /payment/mock-success` | 确认/恢复本人模拟订单，orderId 必须为 UUID v4 |
+
+`PAYMENT_MODE` 默认 `disabled`。只有 `NODE_ENV=development/test` 且 `PAYMENT_MODE=virtual` 才能创建和确认模拟订单。生产环境即使配置 `virtual` 也拒绝；普通查询仍可读取历史订单。前端以 capabilities 为准显示入口，服务端开关才是权限边界。
+
+`payment-plans.ts` 保留版本 1 的实际价格和权益；客户端不能通过名称、metadata、回调 URL 或金额决定发放内容。套餐权益不是等额小麦币，也不存在无限次数套餐。将来调整规则需要新增版本并按订单版本处理历史订单，不能覆盖版本 1。
+
+## 发放与恢复
 
 ```mermaid
-graph TD
-    Client[客户端订单发起] --> ValidatePlan{校验套餐及金额}
-    ValidatePlan -- 失败 --> Throw400[抛出 400 BadRequest]
-    ValidatePlan -- 成功 --> CreatePending[创建 PENDING 支付订单]
-    CreatePending --> CallGateway[调用 VirtualPayment 供应商网关]
-    
-    GatewayCallback[接收支付结果回调/轮询查询] --> LockRecord[findOneAndUpdate 原子加锁更新状态]
-    LockRecord --> LockCheck{是否成功将 PENDING 更新为 PROCESSING?}
-    LockCheck -- 否 --> Return[忽略重复发货]
-    LockCheck -- 是 --> VerifyAmount{核对金额是否防篡改?}
-    VerifyAmount -- 失败 --> Rollback[状态回滚为 PENDING]
-    VerifyAmount -- 成功 --> AddBenefits[修改 MongoDB 用户权益次数/代币]
-    AddBenefits --> AddTx[记录 UserTransaction 流水]
-    AddTx --> SetSuccess[状态设为 SUCCESS]
+flowchart TD
+    A[JWT 与测试开关] --> B[订单归属 通道 版本 金额校验]
+    B --> C{领取 pending 或租约过期的 processing}
+    C -- 未领到 --> Q[只读当前状态]
+    C -- 成功 --> D[同一用户文档原子写权益与订单回执]
+    D --> E{本次成功或回执属于同单}
+    E -- 否 --> X[拒绝重复体验]
+    E -- 是 --> F[按唯一订单号补齐流水]
+    F --> G[按领取凭据将订单设为 success]
+    F -- 失败 --> H[恢复 pending 后允许同单重试]
+    H --> C
 ```
 
-## 3. 架构设计与代码流转 / Architectural Workflow
-- **控制器 (PaymentController)**:
-  - 文件：`payment.controller.ts`
-  - 核心接口：
-    - `POST /payment/initiate`: 发起订单支付。
-    - `GET /payment/query/alipay/:orderId`: 主动查询支付宝/虚拟支付结果。
-    - `POST /payment/mock-success`: 提供虚拟支付的模拟成功端点（开发测试使用，每个用户限用一次）。
-- **支付服务 (PaymentService)**:
-  - 文件：`payment.service.ts`
-  - 核心职责：处理发起预订单业务验证（按金额校验套餐合法性），调用 `virtualPayment` 供应商；进行订单结果安全审核，包含防并发重发货、实付金额与应付金额比对等。
-- **数据持久化 (PaymentRecordSchema)**:
-  - 文件：`payment-record.schema.ts`
-  - 核心字段：`orderId`、`userId`、`channel` (ALIPAY/WECHAT/VIRTUAL)、`amount`、`status` (PENDING/PROCESSING/SUCCESS)、`metadata` (存有套餐计划)。
-- **控制流向 / Data Flow**:
-  1. `PaymentController.initiatePayment` 接收套餐 ID。
-  2. 根据 `planAmountMap` 校验实付金额。
-  3. 在 `paymentRecordModel` 创建 `PENDING` 状态记录，调用 `VirtualPaymentService.initiatePayment`。
-  4. 支付完成后，调用 `queryAlipayPaymentStatus` 或回调触发 `finalizePaymentSuccess`。
-  5. **安全加锁校验**：使用 `findOneAndUpdate` 将 `PENDING` 状态更新为 `PROCESSING`，阻断重复请求。
-  6. 检查金额（`validatePaymentAmount`）后，通过 `$inc` 修改用户表 `userModel` 中的面试剩余额度或代币余额（`applyPlanBenefits`）。
-  7. 订单状态修改为 `SUCCESS`，并保存 `UserTransaction` 流水。
+- `PaymentRecord.processingToken/processingExpiresAt` 是 60 秒领取租约。后续状态更新必须匹配领取凭据；进程中断后过期可重领。
+- `User.hasUsedVirtualPayment` 与默认不返回的 `virtualPaymentOrderId` 同文档原子写入，确保并发不同订单最多发放一次。这个单值回执只适用于每账户一次的模拟权益，不是未来正式多次充值的账本设计。
+- 权益已写入但流水失败时，不回滚已发权益；同单重试根据回执跳过增量，仅补齐流水与订单。不是跨文档事务，也没有后台自动补偿队列。
+- `UserTransaction.relatedOrderId` 已有唯一稀疏索引；部署需确保索引存在。流水为 upsert，仅插入一次。响应排除密码与内部回执。
+- 历史 `hasUsedVirtualPayment=true` 且没有回执的账户不能再模拟；旧 `alipay` 通道订单不能转为模拟订单。没有自动回填或重发旧权益。
+- 错误日志只记录订单 ID。领取、写入失败可追踪，不返回模拟成功掩盖异常。
 
-## 4. 技术依赖与第三方 API / Tech Stack & External APIs
-- **外部支付通道**: 目前主线使用 `VirtualPaymentService` 模拟网关，代码中保留了对 `AlipayPaymentService` 和 `WechatPaymentService` 的配置预留。
-- **生成工具**: `uuid` (用于生成商户侧唯一的 `outTradeNo` 订单流水号)。
+## 验证
 
-## 5. 开发约束与边界处理 / Constraints & Guidelines
-- **防重复处理 (幂等性)**: 每次接收到支付成功后，**必须**使用原子操作更新订单状态。不可采用先 `find` 判断再 `update` 的非原子性操作，以防止并发回调导致用户权益被重复多次累加。
-- **安全检查**: 收到外部支付通知后，必须验证实付金额 `buyerPayAmount` 是否与预下单时的套餐金额一致，防止被篡改金额恶意刷单。
-- **模拟支付次数限制**: `/payment/mock-success` 在调用前必须校验用户的 `hasUsedVirtualPayment` 属性，只有当其为 `false`/未充值过时，才允许模拟一次。
+单元测试：`pnpm --filter @man-shi-mai/server test test/payment/payment.service.spec.ts`。
 
-## 6. 本地调试与排查 / Debugging & Verification
-- **模拟测试方法**:
-  - 先调用 `/payment/initiate` 生成一个单次套餐订单并拿到 `orderId`。
-  - 使用该 `orderId` 调用 `POST /payment/mock-success` 模拟用户支付动作。
-- **日志关键字**:
-  - `创建支付订单记录:` (支付发起)
-  - `订单 ... 支付成功处理完成:` (累加权益成功)
-  - 关注 `状态异常，无法处理支付成功` 的警报日志。
+编译后运行 `test/integration/payment-recovery.cjs`，要求显式 `RUN_LOCAL_INTEGRATION=1` 及独立 `mongodb://127.0.0.1:27028/msm_phase1`。覆盖真实 MongoDB 下的查询只读、流水故障恢复、同单/跨单并发、租约过期和生产拒绝，不调用支付网关。浏览器联调见 `apps/web/e2e/payment-local.spec.ts`。
+
+正式支付仍需单独接入：验签、实付金额校验、回调幂等、可恢复账务、退款/对账及供应商沙箱验收；设置开关不会自动获得这些能力。

@@ -5,6 +5,7 @@ import {
   IsString,
   Min,
   IsNumber,
+  IsObject,
 } from 'class-validator';
 import { PaymentChannel } from '../payment.types';
 import { ApiProperty } from '@nestjs/swagger';
@@ -88,12 +89,13 @@ export class InitiatePaymentDto {
   channel: PaymentChannel;
 
   @IsOptional()
+  @IsObject()
   @ApiProperty({
     description: '订单元数据，可以存储额外的业务信息（JSON对象）',
     example: { userId: '123', campaignId: 'spring2026' },
     required: false,
   })
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 
   @IsOptional()
   @IsString()

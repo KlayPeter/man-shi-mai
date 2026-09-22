@@ -14,9 +14,9 @@ export class QueryPaymentStatusDto {
     description:
       '支付渠道，必须与创建订单时使用的渠道一致。alipay=支付宝, wechat=微信支付',
     example: 'alipay',
-    enum: ['alipay', 'wechat'],
+    enum: ['alipay', 'wechat', 'virtual'],
     required: true,
   })
-  @IsIn(['alipay', 'wechat'])
+  @IsIn(['alipay', 'wechat', 'virtual'])
   channel: string;
 }

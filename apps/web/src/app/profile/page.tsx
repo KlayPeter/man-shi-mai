@@ -147,7 +147,7 @@ export default function ProfilePage() {
                         <button onClick={() => setShowRecharge(true)}
                           className="flex-1 py-2.5 rounded-xl border border-white/30 bg-white/5 hover:bg-white/15 text-white text-sm font-medium flex items-center justify-center gap-1.5 transition-colors">
                           <Icon name="i-heroicons-credit-card" className="w-4 h-4" />
-                          优惠充值
+                          充值
                         </button>
                       </div>
                     </div>

@@ -80,6 +80,9 @@ export class User {
   @Prop({ default: false })
   hasUsedVirtualPayment: boolean; // 是否已使用过模拟支付
 
+  @Prop({ select: false })
+  virtualPaymentOrderId?: string; // 与权益在同一文档原子写入，用于失败恢复
+
   // 用户行为追踪
   @Prop()
   lastLoginTime?: Date; // 最近登录时间

@@ -25,5 +25,6 @@ export const configValidationSchema = Joi.object({
   // AI
   DEEPSEEK_API_KEY: Joi.string().required(),
   DEEPSEEK_MODEL: Joi.string().default('deepseek-chat'),
+  PAYMENT_MODE: Joi.string().valid('disabled', 'virtual').default('disabled'),
   MAX_TOKENS: Joi.number().default(4000),
 });

@@ -1,297 +1,135 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import Link from 'next/link'
+import { useState, useEffect, useRef } from 'react'
+import { isAxiosError } from 'axios'
 import Icon from '@/components/ui/Icon'
 import { useUserStore } from '@/stores/userStore'
-import { toast } from '@/stores/toastStore'
-import request from '@/lib/request'
+import { benefitLabels, createOrderAPI, getPaymentCapabilitiesAPI, mockPaymentSuccessAPI, type PaymentCapabilities, type BenefitField } from '@/api/payment'
 
-const REDEEM_COST = 20
+interface Props { open: boolean; onClose: () => void; onRecharged?: () => void }
+interface PendingOrder { orderId: string; planId: string }
+const focus = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary-600'
 
-const rechargePlans = [
-  { id: 'single', name: '入门包', badge: '', tagline: '适合初次体验', price: 18.8, coins: 30, originalPrice: 25, saving: 6.2, perks: [{ count: 1, label: '面试押题' }] },
-  { id: 'pro', name: '进阶包', badge: '推荐', tagline: '最受欢迎的选择', price: 28.8, coins: 100, originalPrice: 50, saving: 21.2, perks: [{ count: 3, label: '面试押题' }, { count: 2, label: '专项面试' }] },
-  { id: 'max', name: '精英包', badge: '超值', tagline: '全面提升面试竞争力', price: 68.8, coins: 220, originalPrice: 110, saving: 41.2, perks: [{ count: 5, label: '面试押题' }, { count: 4, label: '专项面试' }, { count: 2, label: '行测+HR' }] },
-  { id: 'ultra', name: '无限包', badge: '最优惠', tagline: '长期备战首选', price: 128.8, coins: 400, originalPrice: 200, saving: 71.2, perks: [{ count: 10, label: '面试押题' }, { count: 8, label: '专项面试' }, { count: 4, label: '行测+HR' }] }
-]
-
-const serviceHighlights = [
-  { title: '面试押题', description: '3-5分钟生成，命中率80%+', icon: 'i-heroicons-document-text' },
-  { title: '专项面试模拟', description: '1v1 AI面试官，约1小时', icon: 'i-heroicons-bolt' },
-  { title: '行测+HR面试', description: '综合素质评估，约45分钟', icon: 'i-heroicons-user-group' }
-]
-
-const CUSTOM_RECHARGE_ID = 'custom'
-
-interface Props {
-  open: boolean
-  onClose: () => void
-  onRecharged?: () => void
+function savedOrder(key: string): PendingOrder | null {
+  try {
+    const value: unknown = JSON.parse(sessionStorage.getItem(key) || 'null')
+    if (value && typeof value === 'object' && 'orderId' in value && 'planId' in value && typeof value.orderId === 'string' && typeof value.planId === 'string') return { orderId: value.orderId, planId: value.planId }
+  } catch { /* 本地存储不可用时仍可在本次打开期间恢复。 */ }
+  return null
+}
+function saveOrder(key: string, order: PendingOrder | null) {
+  try { if (order) sessionStorage.setItem(key, JSON.stringify(order)); else sessionStorage.removeItem(key) } catch { /* 不影响服务器确认和当前内存状态。 */ }
 }
 
 export default function RechargeModal({ open, onClose, onRecharged }: Props) {
-  const userStore = useUserStore()
-  const [selectedPlanId, setSelectedPlanId] = useState('pro')
-  const [customAmount, setCustomAmount] = useState('')
+  const dialog = useRef<HTMLDialogElement>(null)
+  const submitting = useRef(false)
+  const user = useUserStore(state => state.userInfo)
+  const [capabilities, setCapabilities] = useState<PaymentCapabilities | null>(null)
+  const [selectedId, setSelectedId] = useState('pro')
+  const [pending, setPending] = useState<PendingOrder | null>(null)
+  const [retry, setRetry] = useState(0)
   const [loading, setLoading] = useState(false)
-  const [paymentSuccess, setPaymentSuccess] = useState(false)
-
-  const balance = userStore.userInfo?.maiCoinBalance ?? 0
-  const redeemableCount = Math.floor(balance / REDEEM_COST)
-  const hasUsedMockPayment = (userStore.userInfo as any)?.hasUsedVirtualPayment ?? false
-
-  const selectedPlan = rechargePlans.find(p => p.id === selectedPlanId) || {
-    id: CUSTOM_RECHARGE_ID,
-    name: '自定义充值',
-    description: '自定义充值',
-    price: Number(customAmount) || 0,
-    coins: Number(customAmount) || 0,
-    originalPrice: Number(customAmount) || 0,
-    saving: 0,
-    perks: []
-  }
+  const [success, setSuccess] = useState(false)
+  const [error, setError] = useState('')
+  const storageKey = `msm-virtual-order:${user._id}`
 
   useEffect(() => {
-    if (open) {
-      setSelectedPlanId('pro')
-      setLoading(false)
-      setPaymentSuccess(false)
-      setCustomAmount('')
-    }
+    const element = dialog.current
+    if (open) element?.showModal()
+    else element?.close()
+    return () => element?.close()
   }, [open])
 
-  const handleCustomRecharge = () => {
-    const amount = Number(customAmount)
-    if (!amount || amount < 1 || amount > 10000) {
-      toast({ title: '请输入 1-10000 的小麦币数量', color: 'yellow' })
-      return
-    }
-    setSelectedPlanId(CUSTOM_RECHARGE_ID)
-  }
+  useEffect(() => {
+    if (!open) return
+    const controller = new AbortController()
+    const stored = savedOrder(storageKey)
+    setPending(stored)
+    if (stored) setSelectedId(stored.planId)
+    setSuccess(false)
+    setError('')
+    setCapabilities(null)
+    getPaymentCapabilitiesAPI(controller.signal).then(value => {
+      if (!controller.signal.aborted) setCapabilities(value)
+    }).catch(() => {
+      if (!controller.signal.aborted) setError('暂时无法读取充值状态，请重试。')
+    })
+    return () => controller.abort()
+  }, [open, retry, storageKey])
 
-  const handleMockPayment = async () => {
-    if (hasUsedMockPayment) {
-      toast({ title: '模拟支付已使用', description: '每个用户仅限使用一次模拟支付', color: 'yellow' })
-      return
-    }
+  const selectedPlan = capabilities?.plans.find(plan => plan.id === selectedId)
+  const submit = async () => {
+    if (submitting.current || !selectedPlan || !user._id) return
+    const accountId = user._id
+    submitting.current = true
     setLoading(true)
-    await new Promise(r => setTimeout(r, 1500))
+    setError('')
     try {
-      const orderData: any = await request.post('/payment/order', {
-        planId: selectedPlan.id,
-        planName: selectedPlan.name,
-        amount: selectedPlan.price,
-        source: 'web',
-        description: `购买${selectedPlan.name}`,
-        channel: 'alipay'
-      })
-      const mockData: any = await request.post('/payment/mock-success', { orderId: orderData?.orderId })
-      if (mockData?.user) userStore.updateUserInfo(mockData.user)
-      setPaymentSuccess(true)
-      toast({ title: '充值成功', description: `已到账 ${selectedPlan.coins} 小麦币`, color: 'green' })
+      let order = pending
+      if (!order) {
+        const created = await createOrderAPI(selectedPlan)
+        order = { orderId: created.orderId, planId: selectedPlan.id }
+        setPending(order)
+        saveOrder(storageKey, order)
+      }
+      if (useUserStore.getState().userInfo._id !== accountId) return
+      const result = await mockPaymentSuccessAPI(order.orderId)
+      if (useUserStore.getState().userInfo._id !== accountId) return
+      if (!result.success || !result.user) {
+        setError('订单正在处理，请稍后点击“继续确认”。同一订单不会重复发放。')
+        return
+      }
+      useUserStore.getState().updateUserInfo(result.user)
+      saveOrder(storageKey, null)
+      setPending(null)
+      setSuccess(true)
       onRecharged?.()
-      setTimeout(() => onClose(), 2000)
-    } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || '请稍后重试'
-      if (errorMsg.includes('已使用') || errorMsg.includes('仅限') || e?.response?.status === 403) {
-        userStore.updateUserInfo({ hasUsedVirtualPayment: true })
-        toast({ title: '模拟支付已使用', description: '每个用户仅限使用一次模拟支付', color: 'yellow' })
+    } catch (cause: unknown) {
+      if (isAxiosError(cause) && [400, 403, 404].includes(cause.response?.status ?? 0)) {
+        saveOrder(storageKey, null)
+        setPending(null)
+        setError('此订单无法继续，请返回账户查看最新权益。每个账户限一次测试模拟发放。')
       } else {
-        toast({ title: '支付失败', description: errorMsg, color: 'red' })
+        setError('发放尚未确认。请继续确认同一订单；已发放的权益不会重复增加。')
       }
     } finally {
+      submitting.current = false
       setLoading(false)
     }
   }
 
-  if (!open) return null
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[1400px] max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <span className="font-semibold text-gray-900">充值享优惠</span>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 transition-colors">
-            <Icon name="i-heroicons-x-mark" className="w-5 h-5 text-gray-500" />
-          </button>
+    <dialog ref={dialog} aria-labelledby="recharge-title" onCancel={onClose} className="m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-3xl overflow-y-auto rounded-3xl border border-line bg-paper p-0 text-ink shadow-2xl backdrop:bg-black/40">
+      <div className="p-5 sm:p-8">
+        <div className="flex items-start justify-between gap-4">
+          <div><p className="mb-2 text-xs tracking-widest text-muted">面试麦 · 账户权益</p><h2 id="recharge-title" className="text-2xl font-semibold">为下一场练习做准备</h2></div>
+          <button type="button" aria-label="关闭充值窗口" onClick={onClose} className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-line ${focus}`}><Icon name="i-heroicons-x-mark" className="h-5 w-5" /></button>
         </div>
-
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
-          {/* 余额 + 自定义充值 */}
-          <div className="flex justify-between bg-gradient-to-r from-primary-500/10 via-primary-500/5 to-primary-500/10 rounded-2xl p-5 border border-primary-100">
-            <div>
-              <div className="flex items-center gap-4">
-                <div>
-                  <span className="text-sm text-gray-600 mr-2">当前余额</span>
-                  <span className="text-2xl font-bold text-primary-600">{balance.toFixed(2)} 小麦币</span>
-                  <p className="text-xs text-gray-500 mt-1">
-                    充值成功后即时到账，
-                    <span className="text-primary-600 font-bold text-sm">{REDEEM_COST} </span>
-                    小麦币可兑换一次 {serviceHighlights[0].title} / {serviceHighlights[1].title} / {serviceHighlights[2].title}
-                    <span className="text-gray-500 text-xs ml-4">
-                      目前可兑换 <span className="text-primary-600 font-bold text-sm">{redeemableCount}</span> 次
-                    </span>
-                  </p>
-                </div>
-              </div>
+        <p className="mt-5 rounded-2xl bg-white p-4 text-sm">当前余额 <strong className="ml-2 text-xl">{user.maiCoinBalance ?? 0}</strong> 小麦币</p>
+        {!capabilities && !error && <p role="status" className="py-8 text-muted">正在读取可用权益…</p>}
+        {error && <div role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}{!capabilities && <button type="button" onClick={() => setRetry(value => value + 1)} className={`ml-3 min-h-11 underline ${focus}`}>重新加载</button>}</div>}
+        {capabilities && <>
+          <p className="my-5 text-sm leading-6 text-muted">{capabilities.message}</p>
+          {!capabilities.enabled ? <div className="rounded-2xl border border-line bg-white p-6"><h3 className="text-lg font-semibold">充值暂未开放</h3><p className="mt-2 text-sm text-muted">已有次数可以继续练习，也可在账户中使用小麦币兑换次数。</p><button type="button" onClick={onClose} className={`mt-6 min-h-11 rounded-full bg-primary-600 px-6 text-sm text-white ${focus}`}>返回账户</button></div> : <>
+            <fieldset disabled={loading || !!pending || success || !!user.hasUsedVirtualPayment} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <legend className="mb-3 font-medium">选择测试套餐</legend>
+              {capabilities.plans.map(plan => <label key={plan.id} className={`cursor-pointer rounded-2xl border p-5 ${selectedId === plan.id ? 'border-primary-600 bg-primary-50' : 'border-line bg-white'}`}>
+                <span className="flex items-center justify-between gap-3"><span className="font-semibold">{plan.name}</span><input type="radio" name="payment-plan" value={plan.id} checked={selectedId === plan.id} onChange={() => setSelectedId(plan.id)} className={`h-5 w-5 accent-primary-600 ${focus}`} /></span>
+                <span className="my-3 block text-sm text-muted">订单标价 ¥{plan.price} · 测试不扣款</span>
+                <ul className="space-y-1 text-sm">{Object.entries(plan.benefits).map(([key, count]) => <li key={key}>{count} {key === 'maiCoinBalance' ? '枚' : '次'}{benefitLabels[key as BenefitField]}</li>)}</ul>
+              </label>)}
+            </fieldset>
+            <div className="mt-6 border-t border-line pt-5">
+              {success ? <p role="status" className="font-medium text-green-800">模拟权益已更新，可返回账户查看。未产生真实交易。</p> : <>
+                {user.hasUsedVirtualPayment && !pending && <p className="mb-3 text-sm text-muted">此账户已使用过测试模拟发放。</p>}
+                <button type="button" onClick={submit} disabled={loading || !selectedPlan || (!!user.hasUsedVirtualPayment && !pending)} className={`min-h-11 w-full rounded-full bg-primary-600 px-6 py-3 font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto ${focus}`}>{loading ? '正在确认…' : pending ? '继续确认' : '确认模拟发放（不扣款）'}</button>
+                {pending && <p className="mt-3 break-all text-xs text-muted">待确认订单：{pending.orderId}。关闭窗口或刷新后可继续。</p>}
+              </>}
             </div>
-            <div className="flex flex-col gap-2 w-[280px] shrink-0">
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-500">购买</span>
-                  <input
-                    type="number" min="1" max="10000"
-                    value={customAmount}
-                    onChange={e => setCustomAmount(e.target.value)}
-                    placeholder="输入 1 - 10000 的整数"
-                    className="w-full pl-10 pr-16 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500">小麦币</span>
-                </div>
-                <button
-                  onClick={handleCustomRecharge}
-                  className="px-3 py-2 rounded-lg border border-amber-400 text-amber-600 text-xs font-medium hover:bg-amber-50 transition-colors"
-                >
-                  确定
-                </button>
-              </div>
-              <p className="text-[11px] text-gray-500">
-                小麦币可用于兑换 {serviceHighlights[0].title} / {serviceHighlights[1].title} / {serviceHighlights[2].title} 等服务
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-col lg:flex-row gap-4">
-            {/* 左侧：套餐列表 */}
-            <div className="flex-1 space-y-4">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900">购买套餐 / 小麦币</p>
-                    <p className="text-xs text-gray-500">一次支付，解锁更多权益</p>
-                  </div>
-                  <p className="text-xs text-gray-400">套餐权益实时生效</p>
-                </div>
-                <div className="flex gap-4 overflow-x-auto pb-2">
-                  {rechargePlans.map(plan => {
-                    const isSelected = selectedPlanId === plan.id
-                    return (
-                      <button
-                        key={plan.id}
-                        type="button"
-                        className={`min-w-[208px] shrink-0 rounded-2xl border-2 p-4 text-left transition-all hover:-translate-y-0.5 ${isSelected ? 'border-primary-500 bg-primary-50/80 shadow-lg' : 'border-transparent bg-white shadow'}`}
-                        onClick={() => setSelectedPlanId(plan.id)}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-1.5">
-                            <p className="text-base font-semibold text-gray-900">{plan.name}</p>
-                            {plan.badge && (
-                              <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary-100 text-primary-600 font-medium">{plan.badge}</span>
-                            )}
-                          </div>
-                          <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${isSelected ? 'border-primary-500 bg-primary-500' : 'border-gray-300'}`}>
-                            {isSelected && <Icon name="i-heroicons-check" className="w-3 h-3 text-white" />}
-                          </div>
-                        </div>
-                        <p className="text-xs text-gray-500 mb-3">{plan.tagline}</p>
-                        {plan.perks?.length > 0 && (
-                          <ul className="space-y-1 text-sm text-gray-700 mb-3">
-                            {plan.perks.map(perk => (
-                              <li key={perk.label} className="flex items-center gap-1.5">
-                                <Icon name="i-heroicons-check-circle" className="w-4 h-4 text-primary-500" />
-                                <span>{perk.count} 次 {perk.label}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                        <div className="flex flex-col items-start text-xs mb-3">
-                          <span className="text-amber-600 font-medium">原价 {plan.originalPrice} 元 · 立省 {plan.saving.toFixed(1)} 元</span>
-                          <span className="text-gray-500 mt-1">支付之后，套餐永久有效</span>
-                        </div>
-                        <div>
-                          <p className="text-3xl font-bold text-gray-900">¥{plan.price}</p>
-                          <p className="text-xs text-gray-500">≈ {plan.coins} 小麦币</p>
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-gray-600">
-                {serviceHighlights.map(service => (
-                  <div key={service.title} className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 flex gap-3 items-start">
-                    <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-inner shrink-0">
-                      <Icon name={service.icon} className="w-4 h-4 text-primary-500" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900 mb-0.5">{service.title}</p>
-                      <p className="text-[11px] leading-relaxed">{service.description}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* 右侧：支付摘要 */}
-            <div className="w-full lg:w-72 shrink-0 rounded-2xl border border-gray-100 bg-white shadow-sm p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">模拟支付</span>
-                <span className="text-[11px] text-gray-400">测试环境</span>
-              </div>
-
-              <div className="text-center py-2 border rounded-2xl bg-gray-50/70">
-                <p className="text-xs text-gray-500">模拟支付</p>
-                <p className="text-3xl font-bold text-primary-600 mt-1">¥{selectedPlan?.price || '--'}</p>
-                {selectedPlan?.saving > 0 && (
-                  <p className="text-xs text-amber-600 font-medium mt-1">限时立省 {selectedPlan.saving.toFixed(1)} 元</p>
-                )}
-              </div>
-
-              <div className="h-[188px] rounded-xl border border-dashed border-gray-300 bg-white text-center text-xs text-gray-400 relative overflow-hidden">
-                {paymentSuccess ? (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-emerald-50 text-emerald-700">
-                    <Icon name="i-heroicons-check-circle" className="w-10 h-10 text-emerald-500" />
-                    <p className="text-base font-semibold">支付成功</p>
-                    <p className="text-xs">权益已更新，可立即使用</p>
-                  </div>
-                ) : hasUsedMockPayment ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-3">
-                    <div className="w-32 h-32 bg-gray-100 rounded-lg flex items-center justify-center">
-                      <Icon name="i-heroicons-x-circle" className="w-20 h-20 text-gray-300" />
-                    </div>
-                    <p className="text-sm text-gray-500">模拟支付已使用</p>
-                    <p className="text-xs text-gray-400">每个用户仅限一次免费体验</p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-full gap-3">
-                    <div className="w-32 h-32 bg-gray-100 rounded-lg flex items-center justify-center">
-                      <Icon name="i-heroicons-qr-code" className="w-20 h-20 text-gray-400" />
-                    </div>
-                    <p className="text-sm text-gray-600">模拟支付二维码</p>
-                    <button
-                      onClick={handleMockPayment}
-                      disabled={loading}
-                      className="px-4 py-1.5 rounded-lg bg-primary-600 text-white text-sm hover:bg-primary-700 disabled:opacity-60 transition-colors"
-                    >
-                      {loading ? '处理中...' : '点击模拟支付成功'}
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <p className="text-[11px] text-gray-400 text-center">
-                支付即视为同意相关
-                <Link href="/agreement" target="_blank" className="text-primary-600 hover:underline">服务协议</Link>
-                与
-                <Link href="/policy" target="_blank" className="text-primary-600 hover:underline">隐私政策</Link>
-              </p>
-            </div>
-          </div>
-        </div>
+          </>}
+        </>}
       </div>
-    </div>
+    </dialog>
   )
 }

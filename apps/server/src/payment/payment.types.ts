@@ -1,4 +1,5 @@
 export enum PaymentChannel {
+  VIRTUAL = 'virtual',
   ALIPAY = 'alipay',
   WECHAT = 'wechat',
 }

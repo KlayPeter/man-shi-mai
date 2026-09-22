@@ -1,13 +1,17 @@
-import { Injectable } from '@nestjs/common';
-import { PaymentOrderPayload, PaymentInitiationResult } from './payment.types';
-import { InitiatePaymentDto } from './dto/initiate-payment.dto';
 import {
+  Injectable,
+  Logger,
   BadRequestException,
   ForbiddenException,
-  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
-import { PaymentChannel } from './payment.types';
+import { PaymentInitiationResult, PaymentChannel } from './payment.types';
+import { InitiatePaymentDto } from './dto/initiate-payment.dto';
 import {
   PaymentRecord,
   PaymentRecordDocument,
@@ -19,20 +23,12 @@ import {
   UserTransactionDocument,
   UserTransactionType,
 } from '../user/schemas/user-transaction.schema';
+import {
+  PAYMENT_PLANS,
+  resolvePaymentPlan,
+  BenefitField,
+} from './payment-plans';
 
-// import { AlipayPaymentService } from './providers/alipay-payment.service';
-// import { WechatPaymentService } from './providers/wechat-payment.service';
-import { VirtualPaymentService } from './providers/virtual-payment.service';
-
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-
-/**
- * 支付记录上下文类型定义
- *
- * 该类型用于描述一次支付交易在系统中的完整上下文信息，
- * 通常用于：支付回调处理、支付记录入库、对账、风控与审计场景。
- */
 export type PaymentRecordContext = {
   /** 业务系统中的用户唯一标识 */
   userId: string;
@@ -89,7 +85,7 @@ export type PaymentRecordContext = {
    * - 通常由 passbackParams 反序列化得到
    * - 存放业务自定义字段，如 planId、source、场景标识等
    */
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 
   /** 支付渠道标识，如：alipay / wechat / stripe 等 */
   channel: string;
@@ -107,691 +103,256 @@ export class PaymentService {
   constructor(
     @InjectModel(PaymentRecord.name)
     private readonly paymentRecordModel: Model<PaymentRecordDocument>,
-    @InjectModel(User.name)
-    private readonly userModel: Model<UserDocument>,
+    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     @InjectModel(UserTransaction.name)
     private readonly userTransactionModel: Model<UserTransactionDocument>,
-    private readonly virtualPayment: VirtualPaymentService,
+    private readonly config: ConfigService,
   ) {}
 
-  // 进行套餐逻辑验证
-  private readonly planAmountMap = {
-    custom: {
-      type: 'custom',
-      validate: (amount: number) =>
-        Number.isInteger(amount) && amount >= 1 && amount <= 10000,
-    },
-    single: { type: 'single', validate: (amount: number) => amount === 18.8 },
-    pro: { type: 'pro', validate: (amount: number) => amount === 28.8 },
-    max: { type: 'max', validate: (amount: number) => amount === 68.8 },
-    ultra: { type: 'ultra', validate: (amount: number) => amount === 128.8 },
-  };
-  /**
-   * 创建支付订单
-   * @param dto 支付订单信息
-   * @returns 支付订单结果
-   */
+  getCapabilities() {
+    const enabled =
+      ['development', 'test'].includes(
+        this.config.get<string>('NODE_ENV') || 'development',
+      ) && this.config.get<string>('PAYMENT_MODE') === 'virtual';
+    return {
+      enabled,
+      mode: enabled ? 'virtual' : 'disabled',
+      plans: PAYMENT_PLANS,
+      message: enabled
+        ? '测试环境：模拟发放不产生真实交易，每个账户限一次'
+        : '充值暂未开放，已有练习权益可继续使用',
+    };
+  }
+
+  private assertVirtualEnabled() {
+    if (!this.getCapabilities().enabled)
+      throw new ServiceUnavailableException('充值暂未开放');
+  }
+
   async initiatePayment(
     dto: InitiatePaymentDto,
     user?: { userId?: string },
   ): Promise<PaymentInitiationResult> {
-    // 进行套餐逻辑验证。
-    // 检查是否存在该套餐
-    const plan = this.planAmountMap[dto.planId];
-
-    if (!plan) {
-      throw new BadRequestException('无效的套餐ID');
-    }
-
-    // 验证金额
-    if (!plan.validate(dto.amount)) {
-      throw new BadRequestException(`${dto.planId} 套餐验证失败`);
-    }
-
-    // 创建支付订单 payload
-    const payload: PaymentOrderPayload = {
-      // 订单ID
-      orderId:
-        dto.channel === PaymentChannel.ALIPAY
-          ? uuidv4()
-          : uuidv4().replace(/-/g, ''),
-      // 订单金额
-      amount: dto.amount,
-      // 套餐ID
-      planId: dto.planId,
-      // 套餐名称
-      planName: dto.planName,
-      // 来源
-      source: dto.source,
-      // 订单描述
-      description: dto.description,
-      // 订单货币
-      currency: dto.currency ?? 'CNY',
-      // 订单元数据
-      metadata: dto.metadata,
-      // 订单通知URL
-      notifyUrl:
-        dto.notifyUrl ??
-        (dto.channel === PaymentChannel.WECHAT
-          ? process.env.WECHAT_PAY_NOTIFY_URL
-          : process.env.ALIPAY_NOTIFY_URL),
-    };
-
-    payload.metadata = this.buildPaymentMetadata(dto, payload, user?.userId);
-
-    // 创建支付记录，保存元数据到数据库（解决微信元数据缓存问题）
+    this.assertVirtualEnabled();
+    if (!user?.userId || !Types.ObjectId.isValid(user.userId))
+      throw new ForbiddenException('请先登录');
+    if (dto.channel !== PaymentChannel.VIRTUAL)
+      throw new BadRequestException('当前仅支持测试模拟发放');
+    const plan = resolvePaymentPlan(dto.planId, dto.amount);
+    if (dto.currency && dto.currency !== 'CNY')
+      throw new BadRequestException('暂不支持该币种');
+    const currentUser = await this.userModel.findById(user.userId).lean();
+    if (!currentUser) throw new NotFoundException('用户不存在');
+    if (currentUser.hasUsedVirtualPayment)
+      throw new ForbiddenException('该账户已使用过模拟发放');
+    const orderId = uuidv4();
+    const createdAt = new Date();
     await this.paymentRecordModel.create({
-      orderId: payload.orderId,
-      userId: user?.userId,
-      user: user?.userId ? new Types.ObjectId(user.userId) : undefined,
-      channel: dto.channel,
-      amount: payload.amount,
-      currency: payload.currency,
-      planId: payload.planId,
-      planName: payload.planName,
-      source: payload.source,
-      description: payload.description,
+      orderId,
+      userId: user.userId,
+      user: new Types.ObjectId(user.userId),
+      channel: PaymentChannel.VIRTUAL,
+      amount: plan.price,
+      currency: 'CNY',
+      planId: plan.id,
+      planName: plan.name,
+      source: dto.source,
+      description: `模拟发放：${plan.name}`,
       status: PaymentRecordStatus.PENDING,
-      metadata: payload.metadata,
-      createdAt: new Date().toISOString(),
+      metadata: {
+        planId: plan.id,
+        amount: plan.price,
+        benefits: plan.benefits,
+        provider: 'virtual',
+        version: 1,
+      },
+      createdAt,
     });
-
-    this.logger.log(
-      `创建支付订单记录: orderId=${payload.orderId}, channel=${dto.channel}, amount=${payload.amount}, userId=${user?.userId}`,
-    );
-
-    // 使用虚拟支付
-    return this.virtualPayment.initiatePayment(payload);
+    return {
+      channel: PaymentChannel.VIRTUAL,
+      orderId,
+      createdAt: createdAt.toISOString(),
+    };
   }
 
-  /**
-   * 主动查询支付结果（虚拟支付）
-   * @param orderId 订单ID
-   * @param user 当前用户信息
-   * @returns 支付结果
-   */
+  private async ownedOrder(orderId: string, userId: string) {
+    const record = await this.paymentRecordModel.findOne({ orderId }).exec();
+    if (!record) throw new NotFoundException('订单不存在');
+    if (record.userId !== userId)
+      throw new ForbiddenException('无权访问此订单');
+    return record;
+  }
+
+  // 查询只读取持久化状态，不能把模拟网关的查询当作支付凭证。
   async queryAlipayPaymentStatus(orderId: string, user: { userId: string }) {
-    // 先从数据库获取订单信息（包含元数据）
-    const paymentRecord = await this.paymentRecordModel
-      .findOne({ orderId })
-      .exec();
-
-    if (!paymentRecord) {
-      throw new BadRequestException('订单不存在');
-    }
-
-    // 验证订单归属（安全修复：防止用户 A 查询用户 B 的订单）
-    if (paymentRecord.userId && paymentRecord.userId !== user.userId) {
-      throw new ForbiddenException('无权查询此订单');
-    }
-
-    // 如果订单已成功，直接返回
-    if (paymentRecord.status === PaymentRecordStatus.SUCCESS) {
-      this.logger.debug(`订单 ${orderId} 已支付成功，直接返回`);
-      return { orderId, success: true };
-    }
-
-    // 调用虚拟支付查询
-    const response = await this.virtualPayment.queryTrade(orderId);
-
-    // 判断支付是否成功
-    const success = response.tradeStatus === 'TRADE_SUCCESS';
-    this.logger.log(
-      `虚拟支付订单查询结果: orderId=${orderId}, status=${response.tradeStatus}`,
-    );
-
-    if (success) {
-      await this.finalizePaymentSuccess({
-        userId: user.userId,
-        buyerLogonId: response.buyerLogonId,
-        buyerPayAmount: response.buyerPayAmount,
-        invoiceAmount: response.invoiceAmount,
-        outTradeNo: response.outTradeNo,
-        passbackParams: '', // Virtual payment doesn't provide this
-        pointAmount: response.pointAmount,
-        receiptAmount: response.receiptAmount,
-        totalAmount: response.totalAmount,
-        tradeNo: response.tradeNo,
-        tradeStatus: response.tradeStatus,
-        buyerOpenId: '', // Virtual payment doesn't provide this
-        traceId: orderId, // Use orderId as traceId for virtual payment
-        metadata: paymentRecord.metadata,
-        channel: paymentRecord.channel,
-        paidAt: new Date(response.sendPayDate),
-        currency: paymentRecord.currency || 'CNY',
-      });
-    }
-
+    const record = await this.ownedOrder(orderId, user.userId);
     return {
       orderId,
-      success,
+      status: record.status,
+      success: record.status === PaymentRecordStatus.SUCCESS,
+      channel: record.channel,
     };
-  }
-
-  // /**
-  //  * 主动查询微信支付结果
-  //  * @param orderId 订单ID
-  //  * @param user 当前用户信息
-  //  * @returns 支付结果
-  //  */
-  // async queryWechatPaymentStatus(orderId: string, user: { userId: string }) {
-  //   // 先从数据库获取订单信息（包含元数据）
-  //   const paymentRecord = await this.paymentRecordModel
-  //     .findOne({ orderId })
-  //     .exec();
-
-  //   if (!paymentRecord) {
-  //     throw new BadRequestException('订单不存在');
-  //   }
-
-  //   // 验证订单归属（安全修复：防止用户 A 查询用户 B 的订单）
-  //   if (paymentRecord.userId && paymentRecord.userId !== user.userId) {
-  //     throw new ForbiddenException('无权查询此订单');
-  //   }
-
-  //   // 如果订单已成功，直接返回
-  //   if (paymentRecord.status === PaymentRecordStatus.SUCCESS) {
-  //     this.logger.debug(`订单 ${orderId} 已支付成功，直接返回`);
-  //     return { orderId, success: true };
-  //   }
-
-  //   // 获取微信支付查询结果
-  //   const response = await this.wechatPayment.queryTrade(orderId);
-  //   this.logger.log(
-  //     `微信支付订单查询结果: orderId=${orderId}, state=${response.trade_state}`,
-  //   );
-
-  //   // 判断微信支付，是否支付成功
-  //   const success = response.trade_state === 'SUCCESS';
-  //   if (success) {
-  //     // 使用数据库中的元数据（方案三）
-  //     response.metadata = paymentRecord.metadata;
-
-  //     // 完成支付成功
-  //     await this.finalizePaymentSuccess({
-  //       ...(response as PaymentRecordContext),
-  //       userId: user.userId,
-  //       channel: PaymentChannel.WECHAT,
-  //       paidAt: response.success_time,
-  //       currency: 'CNY',
-  //       outTradeNo: response.out_trade_no,
-  //       buyerPayAmount: (response.amount.payer_total / 100).toString(),
-  //     });
-  //   }
-  //   return {
-  //     orderId,
-  //     success,
-  //   };
-  // }
-
-  /**
-   * 构建支付订单元数据
-   * @param dto 支付订单信息
-   * @param payload 支付订单payload
-   * @returns 支付订单元数据
-   */
-  private buildPaymentMetadata(
-    dto: InitiatePaymentDto,
-    payload: PaymentOrderPayload,
-    userId?: string,
-  ): Record<string, any> {
-    const metadata: Record<string, any> = {
-      ...(dto.metadata || {}),
-      planId: payload.planId,
-      planName: payload.planName,
-      source: payload.source,
-      amount: payload.amount,
-      currency: payload.currency,
-      description: payload.description,
-    };
-
-    if (userId) {
-      metadata.userId = userId;
-    }
-
-    return metadata;
-  }
-
-  /**
-   * 从支付宝返回结果中提取业务自定义的元数据（passback_params）
-   *
-   * @param response  支付宝接口返回的原始响应对象
-   * @param fallback  当无法从 response 中解析到元数据时使用的兜底数据
-   * @returns         解析后的元数据对象；如果不存在则返回 undefined
-   */
-  private extractAlipayMetadata(
-    response: Record<string, any>,
-    fallback?: Record<string, any>,
-  ): Record<string, any> | undefined {
-    // 支付宝不同接口或不同 SDK 版本中，
-    // 透传参数字段命名可能不一致，这里做多种字段名的兼容处理
-    const passback =
-      response.passback_params || // 标准字段名（常见于接口返回）
-      response.passbackParams || // 驼峰写法（部分 SDK 自动转换）
-      response.passbackparams; // 全小写写法（极端兼容场景）
-
-    // 将透传参数交给统一的解析方法处理，
-    // 如果 passback 为空，则使用 fallback 作为兜底
-    return this.parseMetadata(passback, fallback);
-  }
-
-  /**
-   * 解析支付宝回传的 passback 元数据，统一转换为对象结构
-   *
-   * @param value     原始元数据，可能是字符串（URL 编码的 JSON）或对象
-   * @param fallback  当解析失败或不存在时使用的兜底数据
-   * @returns         解析成功后的对象；若失败则返回 fallback 或 undefined
-   */
-  private parseMetadata(
-    value?: string | Record<string, any>,
-    fallback?: Record<string, any>,
-  ): Record<string, any> | undefined {
-    // 如果没有传入任何值，直接返回兜底数据
-    if (!value) {
-      return fallback;
-    }
-
-    // 如果已经是对象类型，说明上游已解析完成，直接返回
-    if (typeof value === 'object') {
-      return value;
-    }
-
-    try {
-      // 支付宝 passback_params 通常是经过 URL 编码的字符串，需要先解码
-      const decoded = decodeURIComponent(value);
-
-      // 解码后应为 JSON 字符串，尝试反序列化为对象
-      return JSON.parse(decoded);
-    } catch (error) {
-      // 解码或 JSON 解析失败时，记录告警日志，便于排查异常数据
-      this.logger.warn(
-        `解析支付 passback 元数据失败: ${value}`,
-        error as Error,
-      );
-
-      // 解析失败时返回兜底数据，保证业务流程不中断
-      return fallback;
-    }
-  }
-
-  /**
-   * 完成支付成功
-   * @param context 支付记录上下文
-   * @returns
-   */
-  private async finalizePaymentSuccess(context: PaymentRecordContext) {
-    // 🔒 安全修复：使用原子操作更新订单状态为 PROCESSING，防止并发重复发货
-    const updatedRecord = await this.paymentRecordModel
-      .findOneAndUpdate(
-        {
-          orderId: context.outTradeNo,
-          status: { $in: [PaymentRecordStatus.PENDING] }, // 只有 PENDING 状态才能更新
-        },
-        {
-          $set: {
-            status: PaymentRecordStatus.PROCESSING,
-            processingAt: new Date(),
-            notificationPayload: context,
-          },
-        },
-        { new: true },
-      )
-      .exec();
-
-    // 如果更新失败，说明订单已被处理或不存在
-    if (!updatedRecord) {
-      const existingRecord = await this.paymentRecordModel
-        .findOne({ orderId: context.outTradeNo })
-        .exec();
-
-      if (existingRecord?.status === PaymentRecordStatus.SUCCESS) {
-        this.logger.debug(
-          `订单 ${context.outTradeNo} 已处理成功，跳过重复的支付通知`,
-        );
-        return;
-      }
-
-      if (existingRecord?.status === PaymentRecordStatus.PROCESSING) {
-        this.logger.warn(
-          `订单 ${context.outTradeNo} 正在处理中，可能存在并发请求`,
-        );
-        return;
-      }
-
-      this.logger.error(
-        `订单 ${context.outTradeNo} 状态异常，无法处理支付成功`,
-      );
-      return;
-    }
-
-    try {
-      // 🔒 安全修复：验证支付金额是否匹配套餐
-      this.validatePaymentAmount(context);
-
-      // 应用套餐权益
-      await this.applyPlanBenefits(context);
-
-      // 确保充值流水
-      await this.ensureRechargeTransaction(context);
-
-      // 🔒 最终更新订单状态为 SUCCESS
-      await this.paymentRecordModel
-        .findByIdAndUpdate(updatedRecord._id, {
-          $set: {
-            status: PaymentRecordStatus.SUCCESS,
-            paidAt: context.paidAt,
-          },
-        })
-        .exec();
-
-      this.logger.log(
-        `订单 ${context.outTradeNo} 支付成功处理完成: userId=${context.userId}, amount=${context.buyerPayAmount}, planId=${context.metadata?.planId}`,
-      );
-    } catch (error) {
-      // 如果处理失败，回滚订单状态为 PENDING，允许重试
-      await this.paymentRecordModel
-        .findByIdAndUpdate(updatedRecord._id, {
-          $set: { status: PaymentRecordStatus.PENDING },
-        })
-        .exec();
-
-      this.logger.error(
-        `订单 ${context.outTradeNo} 处理失败，已回滚状态: ${error.message}`,
-        error.stack,
-      );
-      throw error;
-    }
-  }
-
-  /**
-   * 🔒 安全修复：验证支付金额是否匹配套餐
-   * @param context 支付记录上下文
-   */
-  private validatePaymentAmount(context: PaymentRecordContext) {
-    const planId = context.metadata?.planId;
-    if (!planId) {
-      this.logger.warn(`订单 ${context.outTradeNo} 缺少套餐信息，跳过金额验证`);
-      return;
-    }
-
-    const plan = this.planAmountMap[planId];
-    if (!plan) {
-      throw new BadRequestException(`无效的套餐ID: ${planId}`);
-    }
-
-    const actualAmount = this.normalizeAmount(context.buyerPayAmount);
-    const expectedAmount = this.normalizeAmount(context.metadata?.amount);
-
-    // 对于 custom 套餐，只需要验证金额范围
-    if (planId === 'custom') {
-      if (!plan.validate(actualAmount)) {
-        throw new BadRequestException(
-          `自定义套餐金额 ${actualAmount} 不在允许范围内 (1-10000)`,
-        );
-      }
-      return;
-    }
-
-    // TODO：测试暂时注释一下代码
-    // 对于固定金额套餐，验证实付金额是否匹配（允许 0.01 的浮点误差）
-    if (Math.abs(actualAmount - expectedAmount) > 0.01) {
-      throw new BadRequestException(
-        `支付金额不匹配: 实付=${actualAmount}, 应付=${expectedAmount}, 套餐=${planId}`,
-      );
-    }
-
-    // 进一步验证套餐的金额规则
-    if (!plan.validate(expectedAmount)) {
-      throw new BadRequestException(
-        `套餐 ${planId} 的金额 ${expectedAmount} 验证失败`,
-      );
-    }
-
-    this.logger.debug(
-      `订单 ${context.outTradeNo} 金额验证通过: planId=${planId}, amount=${actualAmount}`,
-    );
-  }
-
-  /**
-   * 标准化金额
-   * @param primary 主金额
-   * @param fallback 备用金额
-   * @returns
-   */
-  private normalizeAmount(
-    primary?: string | number,
-    fallback?: number,
-  ): number {
-    if (typeof primary === 'number') {
-      return primary;
-    }
-
-    if (typeof primary === 'string') {
-      const parsed = Number(primary);
-      if (!isNaN(parsed)) {
-        return parsed;
-      }
-    }
-
-    return fallback ?? 0;
-  }
-
-  /**
-   * 应用套餐权益
-   * @param record 支付记录
-   * @param paidAmount 支付金额
-   * @returns 应用套餐权益结果
-   */
-  private async applyPlanBenefits(context: PaymentRecordContext) {
-    // 获取套餐ID
-    const planId = context.metadata?.planId;
-    if (!planId) {
-      this.logger.warn(`订单 ${context.outTradeNo} 缺少套餐信息，无法更新权益`);
-      return;
-    }
-
-    if (!context.userId) {
-      this.logger.warn(`订单 ${context.outTradeNo} 缺少用户信息，无法更新权益`);
-      return;
-    }
-
-    // 计算增量
-    const increments: Record<string, number> = {};
-
-    // 根据套餐ID更新用户权益
-    switch (planId) {
-      case 'custom':
-        // TODO：这里增加的小麦币为实付金额，后续看是否需要根据套餐金额进行调整
-        const effectiveAmount = this.normalizeAmount(context.buyerPayAmount);
-        if (effectiveAmount > 0) {
-          increments.maiCoinBalance = effectiveAmount;
-        }
-        break;
-      case 'single':
-        increments.specialRemainingCount = 1;
-        break;
-      case 'pro':
-        increments.resumeRemainingCount = 1;
-        increments.specialRemainingCount = 1;
-        increments.behaviorRemainingCount = 1;
-        break;
-      case 'max':
-        increments.resumeRemainingCount = 3;
-        increments.specialRemainingCount = 3;
-        increments.behaviorRemainingCount = 3;
-        break;
-      case 'ultra':
-        increments.resumeRemainingCount = 6;
-        increments.specialRemainingCount = 16;
-        increments.behaviorRemainingCount = 8;
-        break;
-      default:
-        this.logger.warn(`未知套餐 ${planId}，跳过权益更新`);
-        return;
-    }
-
-    await this.incrementUserBenefits(context.userId, increments);
-  }
-
-  /**
-   * 增量更新用户权益
-   * @param userId 用户ID
-   * @param increments 增量
-   * @returns 增量更新用户权益结果
-   */
-  private async incrementUserBenefits(
-    userId: string,
-    increments: Record<string, number>,
-  ) {
-    // 过滤出有效增量
-    const entries = Object.entries(increments).filter(
-      ([, value]) => typeof value === 'number' && value !== 0,
-    );
-
-    if (!entries.length) {
-      return;
-    }
-
-    if (!Types.ObjectId.isValid(userId)) {
-      this.logger.warn(`用户ID ${userId} 非法，无法更新套餐权益`);
-      return;
-    }
-
-    // 计算增量
-    const inc = entries.reduce(
-      (acc, [key, value]) => {
-        acc[key] = value;
-        return acc;
-      },
-      {} as Record<string, number>,
-    );
-
-    // 增量更新用户权益
-    const updatedUser = await this.userModel
-      .findByIdAndUpdate(userId, { $inc: inc }, { new: false })
-      .exec();
-
-    if (!updatedUser) {
-      this.logger.warn(`未找到用户 ${userId}，权益更新失败`);
-    }
-  }
-
-  /**
-   * 确保充值流水
-   * @param context 支付记录
-   * @returns 确保充值流水结果
-   */
-  private async ensureRechargeTransaction(context: PaymentRecordContext) {
-    if (!(this.normalizeAmount(context.buyerPayAmount) > 0)) {
-      this.logger.warn(
-        `订单 ${context.outTradeNo} 支付金额为0，跳过充值流水记录`,
-      );
-      return;
-    }
-
-    // 获取用户ID
-    const preferredIdentifier = context.userId;
-
-    // 如果用户标识为空，则跳过充值流水记录
-    if (!preferredIdentifier) {
-      this.logger.warn(
-        `订单 ${context.outTradeNo} 缺少用户标识，无法记录充值流水`,
-      );
-      return;
-    }
-
-    const update: Partial<UserTransaction> = {
-      userIdentifier: preferredIdentifier,
-      type: UserTransactionType.RECHARGE,
-      amount: this.normalizeAmount(context.buyerPayAmount),
-      currency: context.currency || 'CNY',
-      description:
-        context.metadata?.description ||
-        `充值${context.metadata?.planName ? `-${context.metadata?.planName}` : ''}`,
-      planId: context.metadata?.planId,
-      planName: context.metadata?.planName,
-      source: context.metadata?.source,
-      relatedOrderId: context.outTradeNo,
-      metadata: context.metadata,
-      payData: context,
-    };
-
-    update.user = new Types.ObjectId(context.userId);
-
-    // 持久化充值流水
-    await this.userTransactionModel
-      .findOneAndUpdate(
-        { relatedOrderId: context.outTradeNo },
-        { $set: update },
-        { upsert: true, new: true, setDefaultsOnInsert: true },
-      )
-      .exec();
   }
 
   async mockPaymentSuccess(orderId: string, user: { userId: string }) {
-    // 检查用户是否已使用过模拟支付
-    const currentUser = await this.userModel.findById(user.userId).exec();
-    if (!currentUser) {
-      throw new BadRequestException('用户不存在');
-    }
-
-    if (currentUser.hasUsedVirtualPayment) {
-      throw new ForbiddenException(
-        '您已使用过模拟支付功能，每个用户仅限使用一次',
+    this.assertVirtualEnabled();
+    const record = await this.ownedOrder(orderId, user.userId);
+    if (
+      record.channel !== PaymentChannel.VIRTUAL ||
+      record.metadata?.provider !== 'virtual' ||
+      record.metadata?.version !== 1
+    ) {
+      throw new BadRequestException(
+        '此订单不能用于模拟发放，请在测试环境重新创建',
       );
     }
-
-    const paymentRecord = await this.paymentRecordModel
-      .findOne({ orderId })
-      .exec();
-
-    if (!paymentRecord) {
-      throw new BadRequestException('订单不存在');
+    // 权益基于已保存订单与服务端目录，不使用调用者传入的 metadata 或金额。
+    const plan = resolvePaymentPlan(record.planId || '', record.amount);
+    if (record.currency !== 'CNY')
+      throw new BadRequestException('订单币种无效');
+    if (record.status !== PaymentRecordStatus.SUCCESS) {
+      const processingToken = uuidv4();
+      const now = new Date();
+      const claimed = await this.paymentRecordModel
+        .findOneAndUpdate(
+          {
+            orderId,
+            userId: user.userId,
+            $or: [
+              { status: PaymentRecordStatus.PENDING },
+              {
+                status: PaymentRecordStatus.PROCESSING,
+                processingExpiresAt: { $lte: now },
+              },
+            ],
+          },
+          {
+            $set: {
+              status: PaymentRecordStatus.PROCESSING,
+              processingToken,
+              processingAt: now,
+              processingExpiresAt: new Date(now.getTime() + 60_000),
+            },
+          },
+          { new: true },
+        )
+        .exec();
+      if (!claimed) return this.queryAlipayPaymentStatus(orderId, user);
+      try {
+        // 发放和回执在用户文档中一起写入。即使后面的流水失败，重试也不会再增加权益。
+        const granted = await this.userModel
+          .findOneAndUpdate(
+            {
+              _id: user.userId,
+              hasUsedVirtualPayment: { $ne: true },
+              virtualPaymentOrderId: { $exists: false },
+            },
+            {
+              $inc: plan.benefits,
+              $set: {
+                hasUsedVirtualPayment: true,
+                virtualPaymentOrderId: orderId,
+              },
+            },
+            { new: true },
+          )
+          .exec();
+        if (!granted) {
+          const existing = await this.userModel
+            .findById(user.userId)
+            .select('+virtualPaymentOrderId')
+            .lean();
+          if (!existing) throw new NotFoundException('用户不存在');
+          if (existing.virtualPaymentOrderId !== orderId)
+            throw new ForbiddenException('该账户已使用过模拟发放');
+        }
+        await this.ensureTransaction(record, plan.name, plan.benefits);
+        const finished = await this.paymentRecordModel
+          .findOneAndUpdate(
+            { orderId, processingToken },
+            {
+              $set: { status: PaymentRecordStatus.SUCCESS, paidAt: now },
+              $unset: { processingToken: 1, processingExpiresAt: 1 },
+            },
+            { new: true },
+          )
+          .exec();
+        if (!finished) return this.queryAlipayPaymentStatus(orderId, user);
+      } catch (error: unknown) {
+        await this.paymentRecordModel
+          .updateOne(
+            { orderId, processingToken },
+            {
+              $set: { status: PaymentRecordStatus.PENDING },
+              $unset: { processingToken: 1, processingExpiresAt: 1 },
+            },
+          )
+          .exec();
+        this.logger.error(
+          `模拟订单处理未完成，允许同单恢复: orderId=${orderId}`,
+        );
+        throw error;
+      }
     }
-
-    if (paymentRecord.userId !== user.userId) {
-      throw new ForbiddenException('无权操作此订单');
-    }
-
-    const context: PaymentRecordContext = {
-      userId: paymentRecord.userId,
-      buyerLogonId: 'mock@test.com',
-      buyerOpenId: 'mock_open_id',
-      buyerPayAmount: paymentRecord.amount.toString(),
-      invoiceAmount: paymentRecord.amount.toString(),
-      outTradeNo: orderId,
-      passbackParams: JSON.stringify(paymentRecord.metadata || {}),
-      pointAmount: '0',
-      receiptAmount: paymentRecord.amount.toString(),
-      totalAmount: paymentRecord.amount.toString(),
-      tradeNo: `mock_${Date.now()}`,
-      tradeStatus: 'TRADE_SUCCESS',
-      traceId: `mock_trace_${Date.now()}`,
-      channel: paymentRecord.channel,
-      paidAt: new Date(),
-      metadata: paymentRecord.metadata,
-      currency: 'CNY',
-    };
-
-    await this.finalizePaymentSuccess(context);
-
-    // 标记用户已使用过模拟支付
-    await this.userModel
-      .findByIdAndUpdate(user.userId, {
-        $set: { hasUsedVirtualPayment: true },
-      })
-      .exec();
-
     const updatedUser = await this.userModel
       .findById(user.userId)
-      .lean()
-      .exec();
-
+      .select('-password -virtualPaymentOrderId')
+      .lean();
+    if (!updatedUser) throw new NotFoundException('用户不存在');
     return {
       success: true,
-      message: '模拟支付成功',
+      status: PaymentRecordStatus.SUCCESS,
       orderId,
       user: updatedUser,
     };
+  }
+
+  private async ensureTransaction(
+    record: PaymentRecordDocument,
+    name: string,
+    benefits: Partial<Record<BenefitField, number>>,
+  ) {
+    try {
+      await this.userTransactionModel
+        .findOneAndUpdate(
+          { relatedOrderId: record.orderId },
+          {
+            $setOnInsert: {
+              user: record.user,
+              userIdentifier: record.userId,
+              type: UserTransactionType.RECHARGE,
+              amount: record.amount,
+              currency: 'CNY',
+              description: `测试模拟发放：${name}（未产生真实交易）`,
+              planId: record.planId,
+              planName: name,
+              relatedOrderId: record.orderId,
+              source: 'virtual',
+              metadata: { simulated: true, benefits },
+              createdAt: new Date(),
+            },
+          },
+          { upsert: true, new: true },
+        )
+        .exec();
+    } catch (error: unknown) {
+      // 唯一索引抢占失败意味着同一订单已有流水，其他数据库故障仍需恢复。
+      if (
+        !(
+          error &&
+          typeof error === 'object' &&
+          'code' in error &&
+          error.code === 11000
+        )
+      )
+        throw error;
+      const existing = await this.userTransactionModel
+        .findOne({
+          relatedOrderId: record.orderId,
+          userIdentifier: record.userId,
+        })
+        .lean();
+      if (!existing || existing.amount !== record.amount) throw error;
+    }
   }
 }
