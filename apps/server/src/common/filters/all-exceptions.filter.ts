@@ -36,17 +36,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
     // 处理其他异常
     else if (exception instanceof Error) {
-      message = exception.message || '服务器内部错误';
-      this.logger.error(
-        `未处理的异常：${message}`,
-        exception.stack,
-        'AllExceptionsFilter',
-      );
+      // 未知异常可能包含数据库连接串、供应商返回体或简历文本。
+      this.logger.error(`未处理的异常类型：${exception.name}`);
     }
 
     // 记录异常日志
     this.logger.error(
-      `请求错误: ${request.method} ${request.url} - 状态码: ${status} - 消息: ${message}`,
+      `请求错误: ${request.method} ${request.path} - 状态码: ${status} - 消息: ${message}`,
     );
 
     // 返回统一标准错误响应格式
@@ -55,7 +51,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message: Array.isArray(message) ? message[0] : message,
       data: null,
       timestamp: new Date().toISOString(),
-      path: request.url,
+      path: request.path,
       ...(error && { error }), // 如果有额外错误信息，则包含在响应中
     };
     response.status(status).json(errorResponse);

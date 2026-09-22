@@ -3,6 +3,7 @@
 import React from 'react'
 import Icon from '@/components/ui/Icon'
 import { useInterviewStore } from '@/stores/interviewStore'
+import { PRACTICE_OPTIONS } from '@/lib/interview-policy'
 
 interface InterviewConfirmModalProps {
   serviceType: 'resume' | 'special' | 'behavior'
@@ -18,6 +19,7 @@ export default function InterviewConfirmModal({
   onClose
 }: InterviewConfirmModalProps) {
   const interviewStore = useInterviewStore()
+  const duration = PRACTICE_OPTIONS.find(option => option.value === interviewStore.practiceIntensity)?.durationMinutes ?? 30
 
   const serviceConfig = {
     resume: {
@@ -50,7 +52,7 @@ export default function InterviewConfirmModal({
         },
         {
           icon: 'i-heroicons-clock',
-          text: '本次专项面试<span class="text-primary-600 font-semibold">时长约 60 ～ 90 分钟</span>，包含提问与反馈环节。'
+          text: `本次专项面试最多 <span class="text-primary-600 font-semibold">${duration} 分钟</span>，结束后可查看复盘。`
         },
         {
           icon: 'i-heroicons-credit-card',
@@ -69,7 +71,7 @@ export default function InterviewConfirmModal({
         },
         {
           icon: 'i-heroicons-clock',
-          text: '本次综合面试<span class="text-purple-600 font-semibold">时长约 45 ～ 70 分钟</span>，包含行测与 HR 问答。'
+          text: `本次综合面试最多 <span class="text-purple-600 font-semibold">${duration} 分钟</span>，结束后可查看复盘。`
         },
         {
           icon: 'i-heroicons-credit-card',

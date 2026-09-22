@@ -1,4 +1,5 @@
 import { configValidationSchema } from '../../src/config/config.schema';
+import { corsOrigins } from '../../src/config/cors-origins';
 
 describe('startup configuration', () => {
   const config = {
@@ -27,5 +28,38 @@ describe('startup configuration', () => {
       configValidationSchema.validate({ ...config, NODE_ENV: 'production' })
         .error,
     ).toBeDefined();
+  });
+  it('rejects the example AI key in production', () => {
+    expect(
+      configValidationSchema.validate({
+        ...config,
+        NODE_ENV: 'production',
+        JWT_SECRET: 'a'.repeat(32),
+        DEEPSEEK_API_KEY: 'your_deepseek_api_key_here',
+      }).error,
+    ).toBeDefined();
+  });
+});
+
+describe('browser origins', () => {
+  it('defaults to no cross-origin browser access in production', () => {
+    expect(corsOrigins('production')).toEqual([]);
+    expect(corsOrigins('development')).toContain('http://localhost:8000');
+  });
+  it('accepts only explicit full origins and removes duplicates', () => {
+    expect(
+      corsOrigins(
+        'production',
+        'https://app.example.test,https://app.example.test',
+      ),
+    ).toEqual(['https://app.example.test']);
+    for (const value of [
+      '*',
+      'https://app.example.test/path',
+      'https://user:secret@app.example.test',
+      'javascript:alert(1)',
+    ]) {
+      expect(() => corsOrigins('production', value)).toThrow();
+    }
   });
 });

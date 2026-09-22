@@ -5,6 +5,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { WinstonModule, WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { createWinstonLogger } from './common/logger/winston.config'; // 引入你之前的 winston 配置
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { corsOrigins } from './config/cors-origins';
 
 async function bootstrap() {
   const nodeEnv = process.env.NODE_ENV || 'development';
@@ -37,20 +38,21 @@ async function bootstrap() {
   );
 
   // 启用 CORS
-  app.enableCors({
-    origin: ['http://localhost:8000', 'http://101.36.122.110:8000'],
-    credentials: true,
-  });
+  const allowedOrigins = corsOrigins(nodeEnv, process.env.CORS_ORIGINS);
+  if (allowedOrigins.length) {
+    app.enableCors({ origin: allowedOrigins, credentials: true });
+  }
 
-  // 配置 Swagger
-  const config = new DocumentBuilder()
-    .setTitle('面试麦 API')
-    .setDescription('面试麦系统接口文档')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api', app, document);
+  if (nodeEnv !== 'production') {
+    const config = new DocumentBuilder()
+      .setTitle('面试麦 API')
+      .setDescription('面试麦系统接口文档')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api', app, document);
+  }
 
   const port = process.env.PORT || 3000;
   await app.listen(port);

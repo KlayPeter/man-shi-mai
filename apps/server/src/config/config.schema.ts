@@ -18,12 +18,18 @@ export const configValidationSchema = Joi.object({
 
   // Server
   PORT: Joi.number().integer().min(1).max(65535).default(3000),
+  CORS_ORIGINS: Joi.string().allow('').optional(),
   NODE_ENV: Joi.string()
     .valid('development', 'production', 'test')
     .default('development'),
 
   // AI
-  DEEPSEEK_API_KEY: Joi.string().required(),
+  DEEPSEEK_API_KEY: Joi.string()
+    .required()
+    .when('NODE_ENV', {
+      is: 'production',
+      then: Joi.string().invalid('your_deepseek_api_key_here'),
+    }),
   DEEPSEEK_MODEL: Joi.string().default('deepseek-chat'),
   PAYMENT_MODE: Joi.string().valid('disabled', 'virtual').default('disabled'),
   MAX_TOKENS: Joi.number().default(4000),

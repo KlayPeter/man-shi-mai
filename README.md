@@ -40,7 +40,7 @@ pnpm dev
 
 - 前端：<http://localhost:8000>
 - 后端：<http://localhost:3000>
-- Swagger：<http://localhost:3000/api>
+- Swagger（开发环境）：<http://localhost:3000/api>
 - 前端通过 `/dev-api` 代理请求后端；修改后端端口时同步修改前端 `BACKEND_API_URL`。
 
 环境变量文件位于各应用目录，只有 `.env.example` 提交到 Git。根目录命令会自动切换到对应应用目录执行。
@@ -109,6 +109,8 @@ NODE_ENV=production pnpm start:server
 前后端可部署到不同机器或不同服务。部署平台的安装命令应从仓库根目录执行，以使用 workspace 和根锁文件；每个服务选择自己的构建和启动命令。
 
 前端运行时配置 `BACKEND_API_URL`，指向部署后后端的内部地址。`NEXT_PUBLIC_*` 值会进入浏览器构建产物，禁止放入密钥。后端生产环境变量通过部署平台注入，生产目录不要复制本地 `.env.development`。
+
+生产后端默认不启用跨站浏览器访问或 Swagger；前端经同源 Next.js 代理访问，不需要 CORS。若确有浏览器直连客户端，通过 `CORS_ORIGINS` 设置逗号分隔的 HTTPS 来源（仅域名、协议和端口），不要填写通配符。启动会拒绝示例 AI 密钥。
 
 GitHub Actions 在 `main` 推送和 PR 时执行冻结锁文件安装及 `pnpm check`。这条流水线负责验证，不自动发布应用。
 
