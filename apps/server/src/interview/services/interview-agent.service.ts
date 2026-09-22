@@ -773,6 +773,7 @@ ${historyText}
     const graph = this.compileInterviewGraph(onChunkToken);
 
     let finalState: any = null;
+    let graphError: unknown;
     const graphPromise = graph
       .invoke(stateInput)
       .then((res) => {
@@ -781,6 +782,7 @@ ${historyText}
       })
       .catch((err) => {
         this.logger.error(`LangGraph 执行抛出异常: ${err.message}`, err.stack);
+        graphError = err;
         queue.close();
       });
 
@@ -791,14 +793,17 @@ ${historyText}
 
     // 等待图彻底完成
     await graphPromise;
+    if (graphError)
+      throw graphError instanceof Error
+        ? graphError
+        : new Error('面试模型执行失败');
 
     // 4. 构造符合原来接口的返回值
     return {
       question: generatedText,
       shouldEnd:
         finalState?.interviewEnded || finalState?.currentPhase === 'closing',
-      standardAnswer:
-        '（当前阶段正在深入简历评估，暂无标准答案，请根据回答质量打分）',
+      standardAnswer: undefined,
       reasoning: finalState?.interviewEnded ? '面试流程已执行完毕' : undefined,
       // 捎带传回最终状态，以便调用方能同步保存
       metadata: {

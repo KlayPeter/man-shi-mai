@@ -235,7 +235,13 @@ export class InterviewController {
 
     // 订阅进度事件
     const subscription = this.interviewService
-      .answerMockInterviewWithStream(userId, dto.sessionId, dto.answer)
+      .answerMockInterviewWithStream(
+        userId,
+        dto.sessionId,
+        dto.answer,
+        dto.requestId,
+        dto.expectedVersion,
+      )
       .subscribe({
         next: (event) => {
           res.write(`data: ${JSON.stringify(event)}\n\n`);

@@ -12,20 +12,21 @@
 
 ```mermaid
 graph TD
-    Client[客户端请求 mock/start] --> ParseResume[DocumentParserService 解析简历文件]
-    ParseResume --> LoadJD[读取 JD 及配置]
-    LoadJD --> CompileGraph[InterviewAgentService 编译状态图]
-    CompileGraph --> RunGraph[运行 LangGraph 节点 introduction]
-    RunGraph --> SSE[通过 RxJS 发送 SSE 事件流]
+    Client[客户端请求 mock/start] --> ParseResume[读取简历快照 必要时解析文件]
+    ParseResume --> LoadJD[读取 JD 配置并创建场次]
+    LoadJD --> Opening[InterviewAIService 生成开场]
+    Opening --> SaveOpening[保存开场和会话快照]
+    SaveOpening --> SSE[通过 RxJS 发送 SSE 事件流]
     
-    Client2[客户端请求 mock/answer] --> LoadState[读取内存会话状态]
+    Client2[客户端请求 mock/answer] --> LoadState[读取持久化会话并领取回合租约]
     LoadState --> RouteJudge[evaluatePhaseTransition 裁判判定]
     RouteJudge --> ReachedLimit{判定需要跳转或达到次数上限?}
     ReachedLimit -- 是 --> StateMove[跳转至下一阶段并重置提问计数]
     ReachedLimit -- 否 --> StateStay[留在当前阶段继续追问]
     StateMove --> RunLLM[调用大模型生成相应提问]
     StateStay --> RunLLM
-    RunLLM --> SSE
+    RunLLM --> SaveTurn[InterviewTurnService 原子保存本轮]
+    SaveTurn --> SSE
 ```
 
 ## 3. 架构设计与代码流转 / Architectural Workflow
@@ -39,7 +40,7 @@ graph TD
     - `GET /interview/analysis/report/:resultId`: 获取打分报告。
 - **核心业务服务 (InterviewService)**:
   - 文件：`services/interview.service.ts`
-  - 职责：编排业务流转，包括调用数据库保存面经结果、创建进度监控订阅器（通过 RxJS Subject 实现 SSE 管道）、积分扣减、文字转语音/语音转文字集成等。
+  - 职责：编排开场、简历押题和权益入口；模拟回合委托 InterviewTurnService，复盘委托 InterviewReportService。语音识别由独立 InterviewSpeechService 提供。
 - **大模型核心处理服务 (InterviewAIService)**:
   - 文件：`services/interview-ai.service.ts`
   - 职责：直接负责与大模型（通过 LangChain/OpenAI）交互。编写核心 Prompt 规则（押题、简历深挖、技术评估），解析并构建符合 JSON schemas 的输出结构。
@@ -74,7 +75,7 @@ graph TD
 
 - 简历押题的缓存命中和新结果统一由流式入口发送 `yati-complete` 并结束；失败事件携带可显示的错误消息。
 - 仅在本次确实扣次后执行失败退款；兑换在同一个条件更新中校验余额并增加次数。跨请求幂等与跨文档账务恢复尚在重构范围内，不能将这一局部修复等同于完整账务保障。
-- 当前活跃模拟面试仍依赖内存 Map，暂停后可通过已有恢复接口重建；进程重启恢复需要后续完善。
+- 模拟面试回答已迁移到持久化回合服务；恢复、并发和重试边界见下方「持久化回合与恢复」。
 - SSE 订阅在响应关闭时清理；取消订阅不等于底层模型调用已取消。Node 请求对象的 close 表示请求读取结束，不能用它判断整个响应已断开（[Node HTTP 文档](https://nodejs.org/api/http.html#event-close_3)）。
 
 - 文件解析仅允许当前配置 OSS Bucket 内本人的简历目录，由 `StsService` 重新生成短期读取签名；不追随重定向。文本清理保留英文单词空格和段落，避免破坏内容。
@@ -133,3 +134,29 @@ flowchart LR
 - `BAIDU_API_KEY` 与 `BAIDU_SECRET_KEY` 缺失返回 503；不再依赖 SDK 的 APP_ID 参数。Token 获取超时 5 秒、识别超时 12 秒，均禁止重定向，不自动重试付费识别。
 - 400 为无效录音，422 为无清晰语音，429 为用户限流，502/503/504 为上游异常、不可用或超时。浏览器保留录音与文字并提供重试。只返回经过映射的错误，不返回原始上游消息、凭据、音频或临时路径。
 - `test/integration/speech-http.cjs` 以真实 Controller/JWT/DTO/ffmpeg 和 Stub 供应商验证四种编码、超长、损坏、字段注入及临时清理；`speech-local.spec.ts` 额外验证浏览器真实录音经 Next 代理到转码。实际百度识别质量另行验收。
+
+## 持久化回合与恢复
+
+`InterviewTurnService` 接管回答、暂停、恢复和结束；`InterviewService` 保留创建场次与旧功能入口，不再使用模拟面试内存 Map。
+
+```mermaid
+flowchart LR
+    A[回答 + 请求 ID + 问题版本] --> B{已保存的同一请求?}
+    B -- 是 --> C[重放确认结果]
+    B -- 否 --> D[校验版本并领取回合租约]
+    D --> E[流式生成下一题]
+    E --> F[原子保存回答 下一题 状态 回执]
+    F --> G[确认后开放下一轮]
+    E -- 失败 --> H[释放本次租约 保留原问题]
+    H --> A
+```
+
+- `POST mock/answer` 必须携带 UUID v4 `requestId` 和整数 `expectedVersion`。初始问题版本为 0，成功确认事件含 `questionVersion`。同一回答重试复用 ID；同 ID 更换文字或版本拒绝。只保存最近一轮重放回执，更早的重试由版本检查拒绝，不承诺无限历史回执。
+- 所有查询限定用户；120 秒租约、90 秒生成超时，领取与提交均匹配版本。提交还匹配租约凭据及未过期时间，过期旧任务不能覆盖新任务。回答、下一题、Agent 状态与回执在同一 Mongo 文档更新；`waiting/end` 仅在保存成功后发送。模型失败和数据库失败不先增加题数；Agent 图异常不再冒充完整输出。
+- 取消 SSE 订阅不会取消模型费用。生成超时后的迟到内容不再发送或写入，但当前图调用尚未完整贯通供应商取消信号；租约超时允许用户重试，不表示模型计费严格一次。
+- `POST mock/resume/:resultId` 同时支持进行中场次、暂停场次和已完成场次的只读恢复；返回问答白名单、问题版本、最近确认请求 ID 及忙碌截止时间，不返回简历快照和租约凭据。暂停恢复调整开始时间以排除暂停时段。暂停、结束均拒绝与活跃回合争抢状态，重复暂停/结束可安全重试。
+- `interview-session.ts` 校验 Mixed 快照并恢复 Date；兼容历史可选字段的 null。旧无版本记录从已保存题数建立首个版本，无批量回填。已有问答与快照不一致时明确拒绝，不擅自拼接或覆盖用户记录。
+- 超时结束也保存最后一条回答，供复盘引用；主动结束不伪造新的问答。开场创建、扣次退款与消费流水仍由旧创建链路处理，其幂等恢复不在本回合保证内。
+- 部署需先停止旧后端实例，再发布新后端与新前端，避免旧实现绕过版本条件写入。旧客户端缺少字段会得到 400，需刷新并恢复场次；不可将新前端接到旧回答服务后重试。尚未实际部署。
+
+验证入口：`test/interview/interview-turn.spec.ts`、`test/interview/interview-agent.spec.ts` 和独立数据库的 `test/integration/turn-recovery.cjs`。后者使用真实 JWT/DTO/HTTP/SSE/Mongo 与模型 Stub，验证并发、重放、服务实例重建、过期租约、暂停/结束竞争、失败重试及最后一条回答。模型内容质量另行验收。

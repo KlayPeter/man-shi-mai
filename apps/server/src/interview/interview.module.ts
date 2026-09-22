@@ -1,3 +1,4 @@
+import { InterviewTurnService } from './services/interview-turn.service';
 import { AudioTranscoderService } from './services/audio-transcoder.service';
 import { BaiduSpeechService } from './services/baidu-speech.service';
 import { InterviewSpeechService } from './services/interview-speech.service';
@@ -53,6 +54,7 @@ import {
     BaiduSpeechService,
     InterviewSpeechService,
     InterviewReportService,
+    InterviewTurnService,
     InterviewService,
     InterviewAIService,
     InterviewAgentService,

@@ -85,6 +85,26 @@ describe('InterviewAgentService', () => {
   });
 
   describe('generateInterviewQuestionStream', () => {
+    it('propagates graph errors after partial output instead of returning a successful turn', async () => {
+      Object.defineProperty(service, 'compileInterviewGraph', {
+        value: (onChunk: (text: string) => void) => ({
+          invoke: async () => {
+            onChunk('未完成的问题');
+            throw new Error('synthetic graph failure');
+          },
+        }),
+      });
+      const generator = service.generateInterviewQuestionStream({
+        interviewType: 'special',
+        resumeContent: '',
+        conversationHistory: [],
+        elapsedMinutes: 0,
+        targetDuration: 30,
+      });
+      expect((await generator.next()).value).toBe('未完成的问题');
+      await expect(generator.next()).rejects.toThrow('synthetic graph failure');
+    });
+
     it('should generate first question stream for introduction phase', async () => {
       // 模拟图编译的私有函数，触发 onChunkToken 回调输出开场白
       jest

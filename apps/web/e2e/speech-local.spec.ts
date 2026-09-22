@@ -15,7 +15,7 @@ test('浏览器原生录音经过真实代理、JWT、DTO 和转码，只有识�
   await page.route('**/dev-api/**', async route => {
     const path = new URL(route.request().url()).pathname
     if (path.endsWith('/speech-to-text')) { await route.continue(); return }
-    await route.fulfill({ json: { code: 200, data: path.includes('/mock/history/') ? { sessionState: { sessionId: 'speech-session', interviewerName: '本地测试面试官' } } : { _id: 'speech-local-owner', username: '本地语音联调' } } })
+    await route.fulfill({ json: { code: 200, data: path.includes('/mock/resume/') ? { resultId: 'speech-result', sessionId: 'speech-session', interviewerName: '本地测试面试官', status: 'in_progress', questionVersion: 0, busyUntil: null, committedRequestId: null, conversationHistory: [{ role: 'interviewer', content: '请介绍一次项目改进。', timestamp: new Date().toISOString() }] } : { _id: 'speech-local-owner', username: '本地语音联调' } } })
   })
   await page.goto('/interview?serviceType=special&step=interview&resultId=speech-result')
   await page.getByRole('button', { name: '继续面试', exact: true }).click()

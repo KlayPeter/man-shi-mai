@@ -21,6 +21,10 @@ interface Message {
 }
 
 interface InterviewState {
+  questionVersion: number
+  answerDraft: string
+  pendingAnswer: { requestId: string; expectedVersion: number; answer: string } | null
+
   currentStep: number
   isSidebarOpen: boolean
   selectedService: string | null
@@ -68,6 +72,9 @@ const isEmpty = (obj: any) => {
 export const useInterviewStore = create<InterviewState>()(
   persist(
     (set, get) => ({
+      questionVersion: 0,
+      answerDraft: '',
+      pendingAnswer: null,
       currentStep: 1,
       isSidebarOpen: true,
       selectedService: null,
@@ -182,6 +189,9 @@ export const useInterviewStore = create<InterviewState>()(
       },
       resetInterview: () => {
         set({
+          questionVersion: 0,
+          answerDraft: '',
+          pendingAnswer: null,
           interviewStatus: 'idle',
           interviewDuration: '00:00:00',
           messages: [],
@@ -200,6 +210,9 @@ export const useInterviewStore = create<InterviewState>()(
           selectedPosition: {},
           resumeId: null,
           resumeText: '',
+          questionVersion: 0,
+          answerDraft: '',
+          pendingAnswer: null,
           interviewStatus: 'idle',
           interviewDuration: '00:00:00',
           messages: [],

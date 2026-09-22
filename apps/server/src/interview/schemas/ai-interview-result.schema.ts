@@ -1,3 +1,4 @@
+import type { MockInterviewEventDto } from '../dto/mock-interview.dto';
 import type { AssessmentOutput } from './assessment-output';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types, Schema as MongooseSchema } from 'mongoose';
@@ -252,6 +253,23 @@ export class AIInterviewResult {
 
   @Prop()
   completedAt?: Date; // 完成时间
+
+  @Prop({ default: 0 })
+  turnVersion: number;
+
+  @Prop()
+  turnLeaseToken?: string;
+
+  @Prop()
+  turnLeaseExpiresAt?: Date;
+
+  @Prop({ type: MongooseSchema.Types.Mixed })
+  lastTurn?: {
+    requestId: string;
+    expectedVersion: number;
+    answerHash: string;
+    events: MockInterviewEventDto[];
+  };
 
   @Prop({ type: MongooseSchema.Types.Mixed })
   sessionState?: any; // 保存完整会话状态（用于恢复）

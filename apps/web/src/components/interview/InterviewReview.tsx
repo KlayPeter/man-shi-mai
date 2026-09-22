@@ -82,7 +82,7 @@ export default function InterviewReview({ resultId }: { resultId: string }) {
       <h2 className="text-lg font-semibold">{({ not_ready: '本场面试尚未结束', pending: '原问答已保存，准备开始复盘', generating: '正在分析本场回答', completed: '复盘已完成', failed: '报告尚未生成成功', insufficient_data: '信息不足，暂不评分' })[review.status]}</h2>
       <p className="mt-3 text-sm leading-6 text-muted">{review.message || (review.status === 'generating' ? '可以先回看下面的问答。生成完成后，分析会自动显示。' : '分析将关联具体回答，帮助你找到下一次练习的重点。')}</p>
       {review.canGenerate && <button type="button" onClick={generate} disabled={generating} className={`${buttonStyle} mt-5 bg-primary-600 text-white`}>{generating ? '正在发起…' : review.status === 'failed' ? '重新生成复盘' : '生成本场复盘'}</button>}
-      {review.status === 'not_ready' && <Link href={`/interview?serviceType=${review.type}&history=true&resultId=${encodeURIComponent(resultId)}`} className={`${buttonStyle} mt-5`}>返回这场面试</Link>}
+      {review.status === 'not_ready' && <Link href={`/interview?serviceType=${review.type}&step=interview&restore=true&resultId=${encodeURIComponent(resultId)}`} className={`${buttonStyle} mt-5`}>返回这场面试</Link>}
     </section>}
     {review && <ReviewOverview review={review} selectedQuestion={selectedQuestion} onSelect={setSelectedQuestion} />}
     {report && <>

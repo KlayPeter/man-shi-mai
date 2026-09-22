@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useInterviewStore } from './interviewStore'
 import { MAX_RESUME_COUNT } from '@/constants'
 
 interface UserInfo {
@@ -70,10 +71,14 @@ export const useUserStore = create<UserState>((set, get) => ({
     set({ token, userInfo, resumes, isLogin: !!token, hydrated: true })
   },
   logout: () => {
+    useInterviewStore.getState().reset()
+    useInterviewStore.setState({ resultId: null, referenceAnswer: [] })
+    useInterviewStore.persist.clearStorage()
     if (typeof window !== 'undefined') {
       localStorage.removeItem('token')
       localStorage.removeItem('userInfo')
       localStorage.removeItem('resumes')
+      localStorage.removeItem('active-interview')
     }
     set({ isLogin: false, token: '', userInfo: {}, resumes: [] })
   },

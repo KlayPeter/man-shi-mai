@@ -1,3 +1,4 @@
+import { InterviewTurnService } from '../../src/interview/services/interview-turn.service';
 import { Test } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
 import { ConfigService } from '@nestjs/config';
@@ -40,6 +41,7 @@ describe('interview reliability', () => {
         ...[
           ConfigService,
           InterviewReportService,
+          InterviewTurnService,
           ResumeAnalysisService,
           DocumentParserService,
           InterviewAIService,

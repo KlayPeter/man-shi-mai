@@ -13,7 +13,7 @@ async function openRoom(page: Page) {
   })
   await page.route('**/dev-api/**', async route => {
     const url = route.request().url()
-    const data = url.includes('/mock/history/') ? { sessionState: { sessionId: 'voice-session', conversationHistory: [{ role: 'assistant', content: '介绍一次你主导的项目改进。' }] } } : { _id: 'voice-user', username: '语音测试' }
+    const data = url.includes('/mock/resume/') ? { resultId: 'voice-result', sessionId: 'voice-session', interviewerName: '面试官', status: 'in_progress', questionVersion: 0, busyUntil: null, committedRequestId: null, conversationHistory: [{ role: 'interviewer', content: '介绍一次你主导的项目改进。', timestamp: new Date().toISOString() }] } : { _id: 'voice-user', username: '语音测试' }
     await route.fulfill({ json: { code: 200, data } })
   })
   await page.goto('/interview?serviceType=special&step=interview&resultId=voice-result')
@@ -35,7 +35,7 @@ test('页内录音失败可重试，校对后才发送；切换文字释放麦�
   let submitted = ''
   await page.route('**/api/sse-proxy*', async route => {
     submitted = route.request().postDataJSON().answer as string
-    await route.fulfill({ contentType: 'text/event-stream', body: 'data: {"type":"question","content":"你如何验证优化结果？"}\n\ndata: {"type":"waiting"}\n\n' })
+    await route.fulfill({ contentType: 'text/event-stream', body: 'data: {"type":"question","content":"你如何验证优化结果？"}\n\ndata: {"type":"waiting","questionVersion":1}\n\n' })
   })
   const answer = page.getByLabel('回答文字 · 可编辑')
   await answer.fill('原有草稿。')

@@ -5,7 +5,8 @@ import {
   MaxLength,
   IsOptional,
   IsEnum,
-  IsNumber,
+  IsUUID,
+  IsInt,
   Min,
   Max,
 } from 'class-validator';
@@ -120,6 +121,16 @@ export class StartMockInterviewDto {
  * 候选人回答请求 DTO
  */
 export class AnswerMockInterviewDto {
+  @ApiProperty({ description: '本轮请求唯一 ID；失败重试必须复用' })
+  @IsUUID('4')
+  requestId: string;
+
+  @ApiProperty({ description: '当前问题版本，从 0 开始' })
+  @IsInt()
+  @Min(0)
+  @Max(1000)
+  expectedVersion: number;
+
   @ApiProperty({
     description: '面试会话ID',
     example: 'uuid-xxx-xxx',
@@ -221,5 +232,8 @@ export class MockInterviewEventDto {
     description: '额外数据',
     required: false,
   })
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
+
+  questionVersion?: number;
+  requestId?: string;
 }

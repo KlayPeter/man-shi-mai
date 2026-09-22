@@ -36,6 +36,7 @@ Object.defineProperty(globalThis, 'localStorage', {
   configurable: true,
 });
 
+import { useInterviewStore } from '../../src/stores/interviewStore';
 import { useUserStore } from '../../src/stores/userStore';
 
 describe('useUserStore', () => {
@@ -81,7 +82,13 @@ describe('useUserStore', () => {
       userInfo: { username: 'Bob' },
     });
 
+    useInterviewStore.setState({ resultId: 'private-result', answerDraft: 'private draft', pendingAnswer: { requestId: 'id', expectedVersion: 0, answer: 'private answer' } });
+    localStorage.setItem('active-interview', 'private-result');
     useUserStore.getState().logout();
+    expect(useInterviewStore.getState().answerDraft).toBe('');
+    expect(useInterviewStore.getState().pendingAnswer).toBeNull();
+    expect(useInterviewStore.getState().resultId).toBeNull();
+    expect(localStorage.getItem('active-interview')).toBeNull();
 
     const state = useUserStore.getState();
     expect(state.token).toBe('');
