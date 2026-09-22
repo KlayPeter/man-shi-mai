@@ -727,7 +727,7 @@ export default function InterviewPageContent() {
 
   const SERVICE_CONFIGS: Record<ServiceType, any> = {
     resume: {
-      title: '开启 AI 精准押题', badge: '采用 Ultra 级模型',
+      title: '准备你的面试重点', badge: '简历与岗位分析',
       description: '请输入目标岗位的详细信息，AI 将为您生成专属的预测题库与高分回答思路。',
       points: ['智能分析岗位 JD', '预测高频面试题', '提供参考答案与技巧', '生成专业评估报告'],
       icon: 'i-heroicons-document-text', iconClass: 'text-blue-600', iconBgClass: 'bg-blue-100',
@@ -772,12 +772,11 @@ export default function InterviewPageContent() {
             onClose={() => setShowConfirmModal(false)}
           />
         )}
-        <div className="h-full flex flex-col items-center justify-center p-6">
-        <div className="w-full max-w-3xl bg-white rounded-2xl border border-gray-100 shadow-xl shadow-gray-100/50 overflow-hidden">
-          {/* 顶部装饰条 */}
-          <div className="h-1.5 bg-gradient-to-r from-primary-400 via-purple-400 to-primary-400" />
+        <div className="min-h-full flex flex-col items-center px-0 py-6 sm:px-4">
+        <div className="w-full max-w-4xl surface-panel overflow-hidden">
+          <div className="border-b border-line px-5 py-6 sm:px-8"><p className="eyebrow !mb-2">让练习更贴近真实机会</p><h1 className="text-2xl font-bold text-ink">完善这次练习的目标</h1><p className="mt-2 text-sm text-muted">补充公司与职位要求，麦麦会结合你的经历展开提问。</p></div>
 
-          <div className="p-8 space-y-8">
+          <div className="p-5 sm:p-8 space-y-6">
             {/* 服务类型提示卡 */}
             <div className={`rounded-xl p-4 flex gap-4 border ${cfg.containerClass}`}>
               <div className="shrink-0">
@@ -805,11 +804,12 @@ export default function InterviewPageContent() {
             {/* 表单字段 */}
             <div className="grid gap-6 md:grid-cols-[1fr_1fr_1.4fr]">
               <div className="space-y-2">
-                <label className="flex items-center gap-1.5 text-sm font-semibold text-neutral-700">
+                <label htmlFor="target-company" className="flex items-center gap-1.5 text-sm font-semibold text-neutral-700">
                   <Icon name="i-heroicons-building-office-2" className="w-4 h-4 text-neutral-400" />
                   目标公司
                 </label>
                 <input
+                  id="target-company"
                   value={company}
                   onChange={e => { setCompany(e.target.value); interviewStore.setSelectedPosition({ ...interviewStore.selectedPosition, company: e.target.value }) }}
                   placeholder="请输入公司全称，如：字节跳动"
@@ -817,11 +817,12 @@ export default function InterviewPageContent() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="flex items-center gap-1.5 text-sm font-semibold text-neutral-700">
+                <label htmlFor="target-position" className="flex items-center gap-1.5 text-sm font-semibold text-neutral-700">
                   <Icon name="i-heroicons-briefcase" className="w-4 h-4 text-neutral-400" />
                   岗位名称
                 </label>
                 <input
+                  id="target-position"
                   value={positionName}
                   onChange={e => { setPositionName(e.target.value); interviewStore.setSelectedPosition({ ...interviewStore.selectedPosition, positionName: e.target.value }) }}
                   placeholder="请输入岗位名称，如：前端开发工程师"
@@ -838,11 +839,12 @@ export default function InterviewPageContent() {
                   <span className="text-xs text-neutral-400 font-normal">以千（K）为单位</span>
                 </label>
                 <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
+                  <div className="relative min-w-0 flex-1">
                     <input
                       type="number"
                       min="0"
                       max="9999"
+                      aria-label="最低薪资（千元）"
                       value={minSalary}
                       onChange={e => {
                         const val = Math.min(9999, Math.max(0, Number(e.target.value) || 0))
@@ -855,11 +857,12 @@ export default function InterviewPageContent() {
                     <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-neutral-400 pointer-events-none">k</span>
                   </div>
                   <Icon name="i-heroicons-arrow-right" className="w-4 h-4 text-neutral-400 shrink-0" />
-                  <div className="relative flex-1">
+                  <div className="relative min-w-0 flex-1">
                     <input
                       type="number"
                       min="0"
                       max="9999"
+                      aria-label="最高薪资（千元）"
                       value={maxSalary}
                       onChange={e => {
                         const val = Math.min(9999, Math.max(0, Number(e.target.value) || 0))
@@ -878,7 +881,7 @@ export default function InterviewPageContent() {
             {/* JD 文本框 */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <label className="flex items-center gap-1.5 text-sm font-semibold text-neutral-700">
+                <label htmlFor="target-jd" className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-neutral-700">
                   <Icon name="i-heroicons-document-text" className="w-4 h-4 text-neutral-400" />
                   岗位职责 (JD)
                   <span className="text-[10px] font-medium text-red-500 bg-red-50 px-2 py-0.5 rounded-full border border-red-100">必填</span>
@@ -898,12 +901,13 @@ export default function InterviewPageContent() {
               </div>
               <div className="relative">
                 <textarea
+                  id="target-jd"
                   value={jd}
                   onChange={e => { setJd(e.target.value); interviewStore.setSelectedPosition({ ...interviewStore.selectedPosition, jd: e.target.value }) }}
                   minLength={MIN_JD}
                   maxLength={MAX_JD}
-                  placeholder={`请直接粘贴目标岗位的职位描述（JD）...\n\n💡 提示：越详细的 JD（包含任职要求、技术栈、加分项），生成的押题越准确，最少 ${MIN_JD} 字，最大 ${MAX_JD} 字。\n\n示例：\n1. 负责前端核心业务功能的开发与维护\n2. 熟练掌握 Vue3、TypeScript 等技术栈\n3. 具备良好的跨部门沟通协作能力`}
-                  rows={12}
+                  placeholder={`请直接粘贴目标岗位的职位描述（JD）...\n\n提示：越详细的 JD（包含任职要求、技术栈、加分项），生成的押题越准确，最少 ${MIN_JD} 字，最大 ${MAX_JD} 字。\n\n示例：\n1. 负责前端核心业务功能的开发与维护\n2. 熟练掌握 Vue3、TypeScript 等技术栈\n3. 具备良好的跨部门沟通协作能力`}
+                  rows={8}
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
                 />
                 {jd.length === 0 && (
@@ -915,15 +919,15 @@ export default function InterviewPageContent() {
             </div>
 
             {/* 底部操作 */}
-            <div className="pt-4 border-t border-gray-100 flex items-center justify-between gap-4">
-              <p className="text-xs text-neutral-400 hidden sm:block">* 点击按钮即表示消耗 1 次{cfg.consumeText}</p>
+            <div className="pt-4 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <p className="text-xs text-muted">确认开始后将消耗 1 次{cfg.consumeText}</p>
               <button
                 onClick={handleSubmit}
                 disabled={submitting}
-                className="w-full sm:w-auto px-12 py-3 bg-primary-600 hover:bg-primary-700 disabled:opacity-60 text-white rounded-xl text-base font-bold flex items-center justify-center gap-2 transition-all hover:shadow-lg hover:-translate-y-0.5"
+                className="w-full sm:w-auto px-12 py-3 bg-primary-600 hover:bg-primary-700 disabled:opacity-60 text-white rounded-xl text-base font-bold flex items-center justify-center gap-2 transition-colors"
               >
                 {cfg.buttonText}
-                <Icon name={cfg.buttonIcon} className="w-5 h-5 animate-pulse" />
+                <Icon name={cfg.buttonIcon} className="w-5 h-5" />
               </button>
             </div>
           </div>

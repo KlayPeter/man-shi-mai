@@ -75,11 +75,12 @@ export default function ProfilePage() {
 
   return (
     <>
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 py-8">
-        <div className="container px-4 mx-auto max-w-7xl">
+      <div className="workspace-page">
+        <div className="page-container">
+          <div className="mb-8"><p className="eyebrow">你的练习空间</p><h1 className="workspace-heading mt-3">账户与权益</h1><p className="mt-3 text-muted">管理个人资料，查看练习权益与账户记录。</p></div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-1">
-              <div className="bg-white rounded-2xl shadow-md p-6 border border-gray-100">
+              <div className="surface-panel p-5 sm:p-6">
                 <h2 className="text-xl font-semibold text-gray-900 mb-6">个人信息</h2>
                 <div className="flex flex-col items-center mb-6">
                   <div className="relative mb-4">
@@ -103,7 +104,7 @@ export default function ProfilePage() {
                   </Button>
                 </div>
                 <div className="pt-6 border-t border-gray-200">
-                  <div className="rounded-2xl p-6 bg-gradient-to-br from-primary-600 via-primary-500 to-primary-700 text-white shadow-xl relative overflow-hidden">
+                  <div className="rounded-2xl p-6 bg-ink text-white shadow-xl relative overflow-hidden">
                     <div className="absolute -right-12 -top-12 w-40 h-40 bg-white/10 blur-2xl rounded-full pointer-events-none" />
                     <div className="relative z-10">
                       <div className="flex items-center gap-2 mb-4">
@@ -139,7 +140,7 @@ export default function ProfilePage() {
                       </div>
                       <div className="flex gap-3">
                         <button onClick={() => setShowRedeem(true)}
-                          className="flex-1 py-2.5 rounded-xl bg-yellow-500 hover:bg-yellow-600 text-white text-sm font-medium flex items-center justify-center gap-1.5 transition-colors shadow-lg">
+                          className="flex-1 py-2.5 rounded-xl bg-lime hover:bg-primary-200 text-ink text-sm font-medium flex items-center justify-center gap-1.5 transition-colors shadow-lg">
                           <Icon name="i-heroicons-sparkles" className="w-4 h-4" />
                           小麦币兑换
                         </button>
@@ -156,8 +157,8 @@ export default function ProfilePage() {
             </div>
 
             <div className="lg:col-span-2 space-y-6">
-              <div className="bg-white rounded-2xl shadow-md p-6 border border-gray-100">
-                <div className="flex items-center justify-between mb-6">
+              <div className="surface-panel p-5 sm:p-6">
+                <div className="flex flex-wrap gap-4 items-center justify-between mb-6">
                   <div className="flex items-center gap-3">
                     <Icon name="i-heroicons-folder" className="w-5 h-5 text-primary-600" />
                     <h2 className="text-base font-semibold text-gray-900">简历中心</h2>
@@ -170,14 +171,14 @@ export default function ProfilePage() {
                     <Icon name="i-heroicons-arrow-right" className="w-4 h-4 ml-1" />
                   </Button>
                 </div>
-                <div className="bg-gray-50 rounded-xl p-5 flex items-center justify-between">
+                <div className="bg-paper rounded-xl p-5 flex flex-wrap gap-4 items-center justify-between">
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-full bg-primary-100 flex items-center justify-center text-primary-600">
                       <Icon name="i-heroicons-document-duplicate" className="w-6 h-6" />
                     </div>
                     <div>
                       <h3 className="font-semibold text-gray-900">统一简历管理</h3>
-                      <p className="text-sm text-gray-500 mt-1">支持在线编辑、PDF解析导入及AI一键润色</p>
+                      <p className="text-sm text-gray-500 mt-1">整理项目经历、在线编辑简历，为下一场面试做好准备。</p>
                     </div>
                   </div>
                   <button 
@@ -189,8 +190,8 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl shadow-md p-6 border border-gray-100">
-                <div className="flex items-center justify-between mb-6">
+              <div className="surface-panel p-5 sm:p-6">
+                <div className="flex flex-wrap gap-4 items-center justify-between mb-6">
                   <div className="flex items-center gap-2">
                     <Icon name="i-heroicons-chart-bar" className="w-5 h-5 text-primary-600" />
                     <h2 className="text-base font-semibold text-gray-900">消费与充值记录</h2>
@@ -198,7 +199,7 @@ export default function ProfilePage() {
                   <div className="flex gap-2 p-1 bg-gray-100 rounded-full">
                     {(['recharge', 'consumption'] as const).map(tab => (
                       <button key={tab} onClick={() => setActiveRecordTab(tab)}
-                        className={`px-4 py-1.5 text-xs font-medium rounded-full transition-all ${activeRecordTab === tab ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-500 hover:text-primary-600'}`}>
+                        aria-pressed={activeRecordTab === tab} className={`min-h-11 px-4 py-1.5 text-xs font-medium rounded-full transition-all ${activeRecordTab === tab ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-500 hover:text-primary-600'}`}>
                         {tab === 'recharge' ? '充值记录' : '消费记录'}
                       </button>
                     ))}

@@ -30,10 +30,10 @@ const Button: React.FC<ButtonProps> = ({
   disabled = false
 }) => {
   const sizeClasses = {
-    sm: 'px-3 py-1.5 text-sm',
-    md: 'px-4 py-2 text-base',
-    lg: 'px-5 py-2.5 text-lg',
-    xl: 'px-6 py-3 text-lg'
+    sm: 'min-h-11 px-3 py-2 text-sm',
+    md: 'min-h-11 px-5 py-2.5 text-sm',
+    lg: 'min-h-12 px-5 py-3 text-base',
+    xl: 'min-h-14 px-6 py-3 text-base'
   }
 
   const colorClasses = {
@@ -54,7 +54,7 @@ const Button: React.FC<ButtonProps> = ({
     }
   }
 
-  const baseClasses = 'inline-flex items-center justify-center rounded-lg font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed'
+  const baseClasses = 'inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed'
 
   const classes = cn(
     baseClasses,

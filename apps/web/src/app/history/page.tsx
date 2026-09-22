@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import Icon from '@/components/ui/Icon'
@@ -33,6 +33,8 @@ export default function HistoryPage() {
   const [activeTab, setActiveTab] = useState('resume')
   const [isLoading, setIsLoading] = useState(false)
   const [list, setList] = useState<any[]>([])
+  const [loadError, setLoadError] = useState(false)
+  const requestId = useRef(0)
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const limit = 10
@@ -40,17 +42,22 @@ export default function HistoryPage() {
   const currentTabLabel = tabs.find(t => t.key === activeTab)?.label || ''
 
   const loadData = useCallback(async (tab = activeTab, currentPage = page) => {
+    const id = ++requestId.current
     setIsLoading(true)
+    setLoadError(false)
     try {
       const data: any = await request.get(`${API_MAP[tab]}?page=${currentPage}&limit=${limit}`)
+      if (id !== requestId.current) return
       const records = Array.isArray(data) ? data : (data?.list || data?.records || [])
       setList(records)
       setTotal(Array.isArray(data) ? data.length : (data?.total || records.length))
     } catch {
+      if (id !== requestId.current) return
+      setLoadError(true)
       setList([])
       setTotal(0)
     } finally {
-      setIsLoading(false)
+      if (id === requestId.current) setIsLoading(false)
     }
   }, [activeTab, page])
 
@@ -77,11 +84,11 @@ export default function HistoryPage() {
   const totalPages = Math.ceil(total / limit)
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 py-8">
-      <div className="container px-4 mx-auto max-w-6xl">
+    <div className="workspace-page">
+      <div className="page-container">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">服务记录</h1>
-          <p className="text-gray-500 text-sm mt-1">查看您的历史面试押题与评估记录</p>
+          <h1 className="workspace-heading">练习记录</h1>
+          <p className="text-gray-500 text-sm mt-1">每一次练习都值得回顾。从反馈里，找到下一次进步的方向。</p>
         </div>
 
         <div className="flex flex-col md:flex-row gap-6 items-start">
@@ -91,6 +98,7 @@ export default function HistoryPage() {
                 {tabs.map(tab => (
                   <button
                     key={tab.key}
+                    aria-pressed={activeTab === tab.key}
                     onClick={() => handleTabChange(tab.key)}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
                       activeTab === tab.key
@@ -112,7 +120,7 @@ export default function HistoryPage() {
               </div>
             </div>
 
-            <div className="bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl p-4 text-white shadow-lg shadow-primary-500/20 hidden md:block">
+            <div className="bg-ink rounded-xl p-4 text-white shadow-sm hidden md:block">
               <div className="flex items-center gap-2 mb-2 opacity-90">
                 <Icon name="i-heroicons-sparkles" className="w-4 h-4" />
                 <span className="text-xs font-medium">AI 面试助手</span>
@@ -124,7 +132,7 @@ export default function HistoryPage() {
           </div>
 
           <div className="flex-1 min-w-0 w-full">
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm min-h-[600px] flex flex-col">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm min-h-[460px] flex flex-col">
               <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
                 <h2 className="font-semibold text-gray-900 flex items-center gap-2">
                   {currentTabLabel}列表
@@ -133,7 +141,7 @@ export default function HistoryPage() {
                 <button
                   onClick={() => loadData(activeTab, page)}
                   disabled={isLoading}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1.5 min-h-11 px-3 py-1.5 rounded-lg text-xs text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-50"
                 >
                   <Icon name="i-heroicons-arrow-path" className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
                   刷新
@@ -148,7 +156,9 @@ export default function HistoryPage() {
                   </div>
                 )}
 
-                {!isLoading && list.length === 0 && (
+                {!isLoading && loadError && (<div role="alert" className="py-20 text-center"><h3 className="font-semibold text-ink">记录暂时没有加载成功</h3><p className="my-3 text-sm text-muted">请检查网络连接后重试。</p><button className="button-secondary" onClick={() => loadData()}>重新加载</button></div>)}
+
+                {!isLoading && !loadError && list.length === 0 && (
                   <div className="h-full flex flex-col items-center justify-center py-20 text-center">
                     <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-4">
                       <Icon name="i-heroicons-clipboard-document-list" className="w-10 h-10 text-gray-300" />
@@ -160,7 +170,7 @@ export default function HistoryPage() {
                       className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 transition-colors"
                     >
                       <Icon name="i-heroicons-plus" className="w-4 h-4" />
-                      去体验服务
+                      开始一次练习
                     </Link>
                   </div>
                 )}
@@ -205,7 +215,7 @@ export default function HistoryPage() {
                         <div className="shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-50 mt-2 sm:mt-0 flex justify-end">
                           <button
                             onClick={() => handleView(record)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-600 hover:bg-primary-50 hover:text-primary-600 transition-colors group-hover:bg-primary-50 group-hover:text-primary-600"
+                            className="flex items-center gap-1.5 min-h-11 px-3 py-1.5 rounded-lg text-sm text-gray-600 hover:bg-primary-50 hover:text-primary-600 transition-colors group-hover:bg-primary-50 group-hover:text-primary-600"
                           >
                             <Icon name="i-heroicons-eye" className="w-4 h-4" />
                             查看报告
@@ -222,7 +232,7 @@ export default function HistoryPage() {
                   <button
                     onClick={() => handlePageChange(page - 1)}
                     disabled={page <= 1}
-                    className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    className="min-h-11 px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   >
                     上一页
                   </button>
@@ -242,7 +252,7 @@ export default function HistoryPage() {
                   <button
                     onClick={() => handlePageChange(page + 1)}
                     disabled={page >= totalPages}
-                    className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    className="min-h-11 px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   >
                     下一页
                   </button>

@@ -76,6 +76,18 @@ pnpm --filter @man-shi-mai/server test test/resume/resume.service.spec.ts
 
 后端原有 E2E 入口为 `pnpm test:e2e:server`，也需要数据库及环境配置。不要对生产数据库运行种子脚本或集成测试。
 
+## 界面设计与独立 UI 测试
+
+视觉规范见 [面试麦设计系统](design-system/mianshimai/MASTER.md)，覆盖首页、登录、面试准备及账户工作区。默认按中国时区自动切换春招（2–6 月）与秋招（7 月到次年 1 月），首页也可手动预览；档期和文案集中在 `apps/web/src/lib/recruitment-season.ts`。
+
+无需后端的浏览器回归：
+
+```bash
+pnpm --filter @man-shi-mai/web exec playwright test --config playwright.ui.config.ts
+```
+
+此配置会在 8000 端口启动或复用前端，并 Mock 所有业务 API，检查响应式布局和核心页面交互；不验证真实 AI、语音、支付或数据库。它与上面的真实 E2E 配置分开运行。
+
 ## 部署
 
 在仓库根目录安装依赖，按应用构建和启动。例如：

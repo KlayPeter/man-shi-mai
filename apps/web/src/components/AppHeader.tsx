@@ -1,249 +1,94 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+import { ArrowUpRight, ChevronDown, Menu, X, UserRound, LogOut } from 'lucide-react'
 import { useUserStore } from '@/stores/userStore'
-import SvgIcon from '@/components/SvgIcon'
-import Icon from '@/components/ui/Icon'
+import Brand from '@/components/Brand'
 import Button from '@/components/ui/Button'
-import Image from 'next/image'
+
+const navigation = [
+  { href: '/', label: '首页' },
+  { href: '/interview/start', label: '面试练习' },
+  { href: '/resume', label: '我的简历' },
+  { href: '/history', label: '练习记录' },
+]
 
 export default function AppHeader() {
   const pathname = usePathname()
   const router = useRouter()
-  const [scrolled, setScrolled] = useState(false)
-  const [showLogoutModal, setShowLogoutModal] = useState(false)
-  const [showUserMenu, setShowUserMenu] = useState(false)
-  const userStore = useUserStore()
-  const menuRef = useRef<HTMLDivElement>(null)
+  const isLogin = useUserStore(s => s.isLogin)
+  const userInfo = useUserStore(s => s.userInfo)
+  const logout = useUserStore(s => s.logout)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [confirmLogout, setConfirmLogout] = useState(false)
+  const dialog = useRef<HTMLDialogElement>(null)
+  const userMenu = useRef<HTMLDetailsElement>(null)
+  const mobileTrigger = useRef<HTMLButtonElement>(null)
+  const loginHref = `/login${pathname !== '/' ? `?redirect=${encodeURIComponent(pathname)}` : ''}`
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 8)
-    onScroll()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
+    setMenuOpen(false)
+    if (userMenu.current) userMenu.current.open = false
+  }, [pathname])
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setShowUserMenu(false)
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (menuOpen) { setMenuOpen(false); mobileTrigger.current?.focus() }
+        if (userMenu.current?.open) { userMenu.current.open = false; userMenu.current.querySelector('summary')?.focus() }
       }
     }
-    if (showUserMenu) document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [showUserMenu])
+    document.addEventListener('keydown', escape)
+    return () => document.removeEventListener('keydown', escape)
+  }, [menuOpen])
 
-  const handleLogout = () => {
-    userStore.logout()
-    setShowLogoutModal(false)
-    router.push('/')
-  }
-
-  const isActive = (path: string) =>
-    pathname === path || pathname.startsWith(path + '/')
-  const loginHref = `/login${pathname && pathname !== '/' ? `?redirect=${encodeURIComponent(pathname)}` : ''}`
+  useEffect(() => {
+    if (confirmLogout) dialog.current?.showModal()
+    else dialog.current?.close()
+  }, [confirmLogout])
 
   return (
     <>
-      <header
-        className={`w-full sticky top-0 z-50 border-b border-gray-200 bg-white/70 backdrop-blur supports-backdrop-filter:bg-white/50 ${
-          scrolled ? 'shadow-sm bg-white/80 backdrop-blur' : ''
-        }`}
-      >
-        <div className="container px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Image
-              src="/logo.png"
-              alt="面试麦"
-              width={32}
-              height={32}
-              className="h-8 w-8"
-            />
-            <Link href="/" className="text-xl font-semibold text-neutral-900">
-              面试麦
-            </Link>
-            <span className="hidden sm:inline-block text-xs text-neutral-500 translate-y-px">
-              押题·模拟·行测 三位一体
-            </span>
-          </div>
-          <nav className="hidden md:flex items-center gap-6 text-sm text-neutral-600">
-            <Link
-              href="/interview/start"
-              className={`transition-colors ${
-                isActive('/interview/start')
-                  ? 'text-neutral-900 font-bold'
-                  : 'hover:text-neutral-900'
-              }`}
-            >
-              开启 AI 服务
-            </Link>
-            <Link
-              href="/resume"
-              className={`transition-colors ${
-                isActive('/resume')
-                  ? 'text-neutral-900 font-bold'
-                  : 'hover:text-neutral-900'
-              }`}
-            >
-              简历中心
-            </Link>
-            <Link
-              href="/history"
-              className={`transition-colors ${
-                isActive('/history')
-                  ? 'text-neutral-900 font-bold'
-                  : 'hover:text-neutral-900'
-              }`}
-            >
-              服务记录
-            </Link>
-            <Link
-              href="/profile?tab=redeem"
-              className={`transition-colors ${
-                isActive('/profile')
-                  ? 'text-neutral-900 font-bold'
-                  : 'hover:text-neutral-900'
-              }`}
-            >
-              兑换服务
-            </Link>
-            <Link
-              href="/faq"
-              className={`transition-colors ${
-                isActive('/faq')
-                  ? 'text-neutral-900 font-bold'
-                  : 'hover:text-neutral-900'
-              }`}
-            >
-              常见问题
-            </Link>
-            <Link
-              href="/contact"
-              className={`transition-colors ${
-                isActive('/contact')
-                  ? 'text-neutral-900 font-bold'
-                  : 'hover:text-neutral-900'
-              }`}
-            >
-              关于我
-            </Link>
+      <header className="site-header">
+        <div className="page-container flex h-[76px] items-center justify-between gap-4">
+          <Link href="/" aria-label="面试麦首页"><Brand /></Link>
+          <nav aria-label="主导航" className="hidden items-center gap-1 md:flex">
+            {navigation.map(item => (
+              <Link key={item.href} href={item.href} aria-current={pathname === item.href ? 'page' : undefined}
+                className={`nav-link ${pathname === item.href ? 'nav-link-active' : ''}`}>{item.label}</Link>
+            ))}
           </nav>
-          <div className="flex items-center gap-2">
-            {!userStore.isLogin ? (
-              <Link
-                href={loginHref}
-                className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                登录
-              </Link>
-            ) : (
-              <div className="relative" ref={menuRef}>
-                <button
-                  onClick={() => setShowUserMenu(!showUserMenu)}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
-                >
-                  {userStore.userInfo.avatar ? (
-                    <Image
-                      src={userStore.userInfo.avatar}
-                      alt={userStore.userInfo.username || '用户头像'}
-                      width={32}
-                      height={32}
-                      className="rounded-full"
-                    />
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center">
-                      <Icon
-                        name="i-heroicons-user"
-                        className="w-5 h-5 text-primary-600"
-                      />
-                    </div>
-                  )}
-                  <span className="text-sm font-medium">
-                    {userStore.userInfo.username || '未命名用户'}
-                  </span>
-                  <Icon name="i-heroicons-chevron-down" className="w-4 h-4" />
-                </button>
-                {showUserMenu && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1">
-                    <Link
-                      href="/resume"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                      onClick={() => setShowUserMenu(false)}
-                    >
-                      <Icon
-                        name="i-heroicons-document-text"
-                        className="w-4 h-4 inline mr-2"
-                      />
-                      简历中心
-                    </Link>
-                    <Link
-                      href="/profile"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                      onClick={() => setShowUserMenu(false)}
-                    >
-                      <Icon
-                        name="i-heroicons-user"
-                        className="w-4 h-4 inline mr-2"
-                      />
-                      个人中心
-                    </Link>
-                    <Link
-                      href="/history"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                      onClick={() => setShowUserMenu(false)}
-                    >
-                      <Icon
-                        name="i-heroicons-chart-bar"
-                        className="w-4 h-4 inline mr-2"
-                      />
-                      服务记录
-                    </Link>
-                    <hr className="my-1" />
-                    <button
-                      onClick={() => {
-                        setShowUserMenu(false)
-                        setShowLogoutModal(true)
-                      }}
-                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    >
-                      <Icon
-                        name="i-heroicons-arrow-left-on-rectangle"
-                        className="w-4 h-4 inline mr-2"
-                      />
-                      退出登录
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+          <div className="flex items-center gap-2 sm:gap-4">
+            {isLogin ? (
+              <details ref={userMenu} className="relative hidden sm:block">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-lg px-2 text-sm [&::-webkit-details-marker]:hidden">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 font-semibold text-primary-800">{userInfo.username?.slice(0, 1) || <UserRound size={17} />}</span>
+                  <span className="hidden max-w-24 truncate lg:inline">{userInfo.username || '我的账户'}</span><ChevronDown size={14} aria-hidden="true" />
+                </summary>
+                <div className="absolute right-0 top-full z-50 mt-2 w-48 rounded-2xl border border-line bg-white p-2 shadow-panel">
+                  <Link className="menu-item" href="/profile">个人中心</Link>
+                  <Link className="menu-item" href="/profile?tab=redeem">账户与权益</Link>
+                  <button className="menu-item w-full gap-2 text-left" onClick={() => { if (userMenu.current) userMenu.current.open = false; setConfirmLogout(true) }}><LogOut size={16} />退出登录</button>
+                </div>
+              </details>
+            ) : <Link href={loginHref} className="hidden min-h-11 items-center text-sm font-medium text-ink sm:flex">登录</Link>}
+            <Link href="/interview/start" className="button-primary shrink-0 whitespace-nowrap !min-h-11 !px-3 !text-sm sm:!px-4">开始练习<ArrowUpRight size={16} aria-hidden="true" /></Link>
+            <button ref={mobileTrigger} className="icon-button md:hidden" aria-label={menuOpen ? '收起导航' : '打开导航'} aria-expanded={menuOpen} aria-controls="mobile-navigation" onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X size={22} /> : <Menu size={22} />}</button>
           </div>
         </div>
+        {menuOpen && <nav id="mobile-navigation" aria-label="移动端导航" className="page-container grid gap-1 border-t border-line pb-4 pt-3 md:hidden">
+          {navigation.map(item => <Link onClick={() => setMenuOpen(false)} className="menu-item" key={item.href} href={item.href} aria-current={pathname === item.href ? 'page' : undefined}>{item.label}</Link>)}
+          <Link className="menu-item" href={isLogin ? '/profile' : loginHref} onClick={() => setMenuOpen(false)}>{isLogin ? '个人中心' : '登录 / 注册'}</Link>
+          {isLogin && <button className="menu-item w-full text-left" onClick={() => { setMenuOpen(false); setConfirmLogout(true) }}>退出登录</button>}
+        </nav>}
       </header>
-
-      {showLogoutModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold mb-4">
-              是否确定退出当前账号？
-            </h3>
-            <p className="text-gray-600 mb-6">未保存的面试进度可能不会保留。</p>
-            <div className="flex gap-2 justify-end">
-              <Button
-                color="gray"
-                variant="ghost"
-                onClick={() => setShowLogoutModal(false)}
-              >
-                取消
-              </Button>
-              <Button color="primary" onClick={handleLogout}>
-                确定退出
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <dialog ref={dialog} onCancel={() => setConfirmLogout(false)} onClose={() => setConfirmLogout(false)} className="w-[calc(100%_-_2rem)] max-w-sm rounded-2xl border border-line p-7 shadow-panel backdrop:bg-ink/40" aria-labelledby="logout-title">
+        <h2 id="logout-title" className="text-xl font-bold">退出当前账号？</h2>
+        <p className="mb-6 mt-3 text-sm text-muted">请先确认你的练习和简历修改已保存。</p>
+        <div className="flex justify-end gap-3"><Button color="gray" variant="ghost" onClick={() => setConfirmLogout(false)}>取消</Button><Button onClick={() => { logout(); setConfirmLogout(false); router.push('/') }}>确定退出</Button></div>
+      </dialog>
     </>
   )
 }

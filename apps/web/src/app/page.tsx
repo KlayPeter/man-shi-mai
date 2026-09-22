@@ -1,3 +1,4 @@
+import HomePractice from '@/components/home/HomePractice'
 import HomeHero from '@/components/home/HomeHero'
 import HomeServices from '@/components/home/HomeServices'
 import HomeFeatures from '@/components/home/HomeFeatures'
@@ -9,6 +10,7 @@ export default function Home() {
     <div>
       <HomeHero />
       <HomeServices />
+      <HomePractice />
       <HomeFeatures />
       <HomeSteps />
       <HomeCTA />

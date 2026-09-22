@@ -1,99 +1,18 @@
-'use client'
-
-import React from 'react'
-import Icon from '@/components/ui/Icon'
-import StarMethodModal from '@/components/StarMethodModal'
+import { ArrowUpRight, Check, Target, MessageCircle, ListChecks } from 'lucide-react'
+import Link from 'next/link'
 
 export default function HomeFeatures() {
   return (
-    <section className="py-10 md:py-22 bg-neutral-50/50">
-      <div className="container px-4">
-        <div className="mx-auto max-w-3xl text-center mb-16">
-          <h2 className="text-3xl md:text-4xl font-bold text-neutral-900 tracking-tight">
-            三大服务 × 全流程覆盖
-          </h2>
-          <p className="mt-4 text-lg text-neutral-600">
-            不同于市面上单一的 AI 面试模拟工具，面试麦提供从
-            <span className="font-semibold text-primary-600">押题预测</span>到
-            <span className="font-semibold text-primary-600">实战模拟</span>再到
-            <span className="font-semibold text-primary-600">综合评估</span>的完整解决方案，全方位提升面试竞争力。
-          </p>
+    <section className="section-spacing bg-white">
+      <div className="page-container grid items-center gap-12 lg:grid-cols-2 lg:gap-20">
+        <div><p className="season-section-number">03 / MAKE IT COUNT</p><h2 className="section-title !leading-snug">知道哪里答得好，<br />也知道下一步怎么改。</h2><p className="section-description">一次模拟不是终点。把笼统的“感觉还行”，变成有方向的复盘，让每一段经历都讲得更扎实。</p>
+          <div className="mt-8 space-y-6">{[{icon: Target,title:'看到回答中的亮点与盲点',text:'从岗位匹配、项目经历和表达方式拆解表现。'},{icon: MessageCircle,title:'把建议变成下一次回答',text:'对照反馈补充细节，练习更清楚的表达结构。'},{icon: ListChecks,title:'让准备有迹可循',text:'保留练习记录，面试前回顾自己的重点。'}].map(item => <div key={item.title} className="flex gap-4"><item.icon size={21} className="mt-1 shrink-0 text-primary-600" aria-hidden="true" /><div><h3 className="text-sm font-semibold text-ink">{item.title}</h3><p className="mt-1 text-sm leading-6 text-muted">{item.text}</p></div></div>)}</div>
+          <Link href="/interview/start" className="mt-7 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-primary-700">开始练习，获得自己的反馈<ArrowUpRight size={16} aria-hidden="true" /></Link>
         </div>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
-          <div className="group p-8 bg-gradient-to-br from-blue-50/50 to-white rounded-2xl border-2 border-blue-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-            <div className="h-12 w-12 rounded-xl bg-blue-500 text-white flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-lg shadow-blue-200">
-              <Icon name="i-heroicons-document-text" className="w-6 h-6" />
-            </div>
-            <div className="flex items-center gap-2 mb-2">
-              <h3 className="text-xl font-bold text-neutral-900">面试押题</h3>
-              <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold">
-                核心服务
-              </span>
-            </div>
-            <p className="mt-3 text-neutral-600 leading-relaxed">
-              基于岗位 JD 和简历，AI 智能预测 80% 高频面试题，附带参考答案与回答技巧，3 分钟快速生成。
-            </p>
-          </div>
-
-          <div className="group p-8 bg-gradient-to-br from-emerald-50/50 to-white rounded-2xl border-2 border-emerald-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-            <div className="h-12 w-12 rounded-xl bg-emerald-500 text-white flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-lg shadow-emerald-200">
-              <Icon name="i-heroicons-bolt" className="w-6 h-6" />
-            </div>
-            <div className="flex items-center gap-2 mb-2">
-              <h3 className="text-xl font-bold text-neutral-900">专项面试</h3>
-              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">
-                核心服务
-              </span>
-            </div>
-            <p className="mt-3 text-neutral-600 leading-relaxed">
-              针对技术面、业务面进行深度模拟，AI 面试官实时追问与反馈，支持语音/文字，约 1 小时实战训练。
-            </p>
-          </div>
-
-          <div className="group p-8 bg-gradient-to-br from-purple-50/50 to-white rounded-2xl border-2 border-purple-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-            <div className="h-12 w-12 rounded-xl bg-purple-500 text-white flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-lg shadow-purple-200">
-              <Icon name="i-heroicons-chat-bubble-left-right" className="w-6 h-6" />
-            </div>
-            <div className="flex items-center gap-2 mb-2">
-              <h3 className="text-xl font-bold text-neutral-900">行测+HR面试</h3>
-              <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 text-[10px] font-bold">
-                核心服务
-              </span>
-            </div>
-            <p className="mt-3 text-neutral-600 leading-relaxed">
-              覆盖行政能力测试 + HR 软技能面试，评估沟通表达与情商，约 45 分钟全面提升综合素质。
-            </p>
-          </div>
-
-          <div className="group p-8 bg-white rounded-2xl border border-neutral-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-            <div className="h-12 w-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-              <Icon name="i-heroicons-chart-pie" className="w-6 h-6" />
-            </div>
-            <h3 className="text-xl font-semibold text-neutral-900">结构化评估报告</h3>
-            <p className="mt-3 text-neutral-600 leading-relaxed">
-              覆盖 <StarMethodModal /> 模型、技能矩阵、雷达图与改进建议，一键导出复盘。
-            </p>
-          </div>
-
-          <div className="group p-8 bg-white rounded-2xl border border-neutral-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-            <div className="h-12 w-12 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-              <Icon name="i-heroicons-sparkles" className="w-6 h-6" />
-            </div>
-            <h3 className="text-xl font-semibold text-neutral-900">真实公司风格</h3>
-            <p className="mt-3 text-neutral-600 leading-relaxed">
-              按公司/岗位/等级定制问法与偏好，模拟真实面试氛围与风格。
-            </p>
-          </div>
-
-          <div className="group p-8 bg-white rounded-2xl border border-neutral-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-            <div className="h-12 w-12 rounded-xl bg-neutral-100 text-neutral-800 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-              <Icon name="i-heroicons-shield-check" className="w-6 h-6" />
-            </div>
-            <h3 className="text-xl font-semibold text-neutral-900">隐私与数据安全</h3>
-            <p className="mt-3 text-neutral-600 leading-relaxed">
-              企业级数据加密，你的简历与面试数据只属于你，安全可控。
-            </p>
-          </div>
+        <div className="relative rounded-2xl border border-ink bg-ink p-5 sm:p-8">
+          <div className="mb-6 flex items-center justify-between text-white"><div><p className="text-xs text-white/65">每一次回答，都值得复盘</p><h3 className="mt-2 text-xl font-semibold">你的面试复盘笔记</h3></div><span className="rounded-full border border-white/20 px-3 py-1 text-xs text-white/75">报告示意</span></div>
+          <div className="report-example p-5 sm:p-6"><div className="flex items-center justify-between border-b border-line pb-4"><span className="text-sm font-semibold text-ink">项目经历 · 回答分析</span><span className="text-xs text-muted">示例</span></div><p className="mb-5 mt-5 text-lg font-semibold leading-8 text-ink">“做了什么”已经清楚，<br />还可以再讲讲“为什么这样做”。</p><div className="space-y-4">{[{label:'经历描述',value:'清楚',width:'84%'},{label:'决策依据',value:'待展开',width:'55%'},{label:'结果验证',value:'可补充',width:'65%'}].map(item => <div key={item.label}><div className="mb-2 flex justify-between text-xs text-muted"><span>{item.label}</span><span>{item.value}</span></div><div className="h-1.5 overflow-hidden rounded-full bg-primary-100"><div className="h-full rounded-full bg-primary-500" style={{width:item.width}} /></div></div>)}</div><div className="mt-6 rounded-xl bg-primary-100/70 p-4"><p className="flex items-center gap-2 text-xs font-semibold text-primary-800"><Check size={15} aria-hidden="true" />下一次，可以这样准备</p><p className="mt-2 text-sm leading-6 text-primary-800">补充一个关键决策、一个具体行动，以及能说明结果的真实证据。</p></div></div>
+          <p className="mt-4 text-center text-xs text-white/60">展示内容为示例，实际反馈由你的练习生成</p>
         </div>
       </div>
     </section>

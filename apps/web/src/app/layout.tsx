@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
+import { SeasonProvider } from '@/components/season/SeasonProvider'
 import { SEO, jsonLdWebsite, jsonLdOrganization, absoluteUrl } from '@/constants/seo'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -87,8 +88,8 @@ export default function RootLayout({
         <meta httpEquiv="Cache-Control" content="no-transform" />
         <meta httpEquiv="Cache-Control" content="no-siteapp" />
         <meta name="copyright" content={`Copyright © ${new Date().getFullYear()} ${SEO.siteName}`} />
-        <meta name="theme-color" content="#3b82f6" />
-        <meta name="msapplication-TileColor" content="#3b82f6" />
+        <meta name="theme-color" content="#fffbf5" />
+        <meta name="msapplication-TileColor" content="#242431" />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
@@ -102,7 +103,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className={inter.className}>{children}</body>
+      <body className={inter.className}><SeasonProvider>{children}</SeasonProvider></body>
     </html>
   )
 }

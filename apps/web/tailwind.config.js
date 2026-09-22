@@ -8,19 +8,14 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        primary: {
-          50: '#f0fdf4',
-          100: '#dcfce7',
-          400: '#4ade80',
-          500: '#47b656',
-          600: '#16a34a',
-          700: '#15803d',
-          900: '#14532d',
-        },
-        accent: '#10B981',
+        primary: Object.fromEntries([50,100,200,300,400,500,600,700,800,900].map(shade => [shade, `rgb(var(--primary-${shade}) / <alpha-value>)`])),
+        ink: 'rgb(var(--ink) / <alpha-value>)', muted: 'rgb(var(--muted) / <alpha-value>)',
+        line: 'rgb(var(--line) / <alpha-value>)', paper: 'rgb(var(--paper) / <alpha-value>)',
+        lime: 'rgb(var(--accent) / <alpha-value>)', sand: '#f3f0e8', accent: 'rgb(var(--accent) / <alpha-value>)',
         danger: '#EF4444',
         warning: '#F59E0B',
       },
+      boxShadow: { panel: '0 16px 50px -20px rgba(23,46,37,.18)' },
       container: {
         center: true,
         padding: '1rem',

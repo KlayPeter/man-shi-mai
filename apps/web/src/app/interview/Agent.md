@@ -1,72 +1,43 @@
-# Frontend Module: AI Interview Workspace (AI 面试工作流与测评报告)
+# 面试准备、练习与报告
 
-## 1. 业务场景概述 / Page Overview
-- **核心业务逻辑**: 本模块为用户提供全套的模拟面试交互。包括：
-  1. **配置开启 (start/)**：选择面试类型、简历、岗位，贴入 JD，完成下单配置。
-  2. **面试实战 (interview/)**：与 AI 面试官进行流式实时会话，支持选择文本或语音录音作答，支持暂停、恢复或主动交卷。
-  3. **打分报告 (report/)**：获取结构化的面试评估，使用图表展示技术匹配度、雷达能力模型、缺失的技能和改进建议。
-
-## 2. 页面渲染与交互流程图 / UI & Interaction Workflows (Mermaid)
+本模块分为 `/interview/start`、`/interview` 和 `/interview/report`，各路由通过 page.tsx 引入客户端内容。共用 InterviewLayout：桌面使用深色流程侧栏，手机保留顶部返回和步骤提示。
 
 ```mermaid
-graph TD
-    Start[访问 interview/start 面试配置页] --> Config[选择简历/填写岗位/JD]
-    Config --> Submit[扣减次数并跳转至 interview/ 工作区]
-    
-    Submit --> FetchSSE[发起 HTTP POST mock/start 请求并监听 Stream]
-    FetchSSE --> ReadSSE[逐字解析 ReadableStream 打字机效果渲染消息]
-    ReadSSE --> UserAction{用户行为}
-    
-    UserAction -- 文本/语音作答 --> SubmitAnswer[提交回答并发起 mock/answer Stream 监听]
-    SubmitAnswer --> ReadSSE
-    
-    UserAction -- 暂停/恢复 --> PauseResume[保存当前会话进度 / 唤醒会话]
-    
-    UserAction -- 主动交卷/面试完成 --> EndInterview[调用 mock/end 生成分析报告]
-    EndInterview --> Report[跳转至 interview/report/ 报告页]
-    Report --> RadarChart[渲染能力雷达图与匹配技能列表]
+flowchart TD
+    A[选择目标岗位与简历或文本] --> B[选择练习类型]
+    B --> C[interview input 填写公司 薪资 JD]
+    C --> D[确认开始]
+    D --> E{服务类型}
+    E -->|resume| F[流式生成押题]
+    E -->|special 或 behavior| G[模拟面试与多轮回答]
+    F --> H[complete 展示结果]
+    G --> I[结束面试与查看报告]
+    H --> I
+    J[练习记录] --> K[history 模式加载已有结果]
+    K --> I
 ```
 
-## 3. 页面结构与分工 / Module Directory Structure
-本模块包含三大核心路由页面：
+## 准备页
 
-### 2.1 面试配置页 (`src/app/interview/start/`)
-- **page.tsx** & **page.client.tsx**:
-  - 用户在此选择要押题或模拟的类型（简历押题/专项/综合）。
-  - 选择本地已上传的简历模板，贴入招聘岗位、目标公司、具体 JD 要求。
-  - 点击“开启”将扣减剩余次数，开启后跳转到对应的面试工作区。
+- 岗位来自 job-categories.json，支持搜索、分类与键盘选择；状态保存在 useInterviewStore。
+- 简历列表通过 `/resume/getInterviewResumeList` 加载并写入 useUserStore。也可上传、预览、删除或粘贴简历文本。
+- 有目标岗位且有简历 ID 或非空文本才启用下一步。粘贴有效文本会清除已选简历 ID。
+- 简历中心通过 `?resumeId=` 进入时，成功加载并匹配后预选；不覆盖已有文本、简历或进行中的会话。
+- 练习类型弹窗使用原生 dialog，支持 Escape、焦点约束与关闭后返回焦点。选择类型只写状态并跳转，不扣减权益。
+- 跳转目标为 `/interview?serviceType=resume|special|behavior&step=input`。
 
-### 2.2 面试实战工作区 (`src/app/interview/`)
-- **page.tsx** & **page.client.tsx**:
-  - 核心互动室。展示面试官的实时对话框。
-  - **流式对话获取 (SSE)**：支持与后端 SSE 接口进行流式打字机应答渲染。
-  - **语音交互**：支持麦克风录音并转换为语音文本进行快捷作答。
-  - **控制条**：提供暂停面试、恢复进度和主动交卷并生成报告的按钮。
+## 练习工作区
 
-### 2.3 面试报告展示区 (`src/app/interview/report/`)
-- **page.tsx** & **page.client.tsx**:
-  - 最终成果展示。从后端拉取打分报告 JSON。
-  - 显示多维度雷达图（技术、行为、软实力、项目匹配度）。
-  - 列出 matchedSkills (匹配技能点) 和 missingSkills (缺失技能点)。
-  - 展示大模型提供的具体建议反馈、错题整理与正确示范答案。
+- `serviceType` 为 resume、special、behavior；`step` 为 input、progress、interview、complete、error。
+- input 收集公司、岗位、薪资和 JD，JD 长度要求 50–2000 字；确认开始、权益检查与后端交互沿用 page.client.tsx 业务处理。
+- useInterviewStore 共享岗位、简历、会话、消息和进度。本地状态管理输入、生成进度、弹窗和流连接。
+- 普通 HTTP 通过 request；流式请求通过 ssePost 和统一 SSE 代理。不要将 SSE 当成一次性 JSON 请求。
+- 押题流：`/interview/resume/quiz/stream`；模拟面试流：`/interview/mock/start`、`/interview/mock/answer`；结束：`POST /interview/mock/end/:resultId`。
+- 历史入口使用 `history=true&resultId=`，按类型加载押题结果或模拟问答、历史会话。页面复用 VoiceInputModal、RestoreInterviewModal、InterviewConfirmModal 与语音合成 Hook。
+- InterviewLayout 在 progress 或尚未结束的 interview 阶段阻止离开；步骤 complete 与报告页显示复盘阶段。不要仅改变导航外观而移除该守卫。
 
-## 4. 状态管理与数据流 / State Management & Data Flow
-- **流式请求管理 (SSE)**:
-  - 客户端通过 `fetch` 的 `ReadableStream` 逐字解析服务端返回的 EventStream 事件，将流式文本追加到最新的一条 AI 消息中，实现打字机效果。
-- **全局状态**:
-  - 使用 `useUserStore` 读取用户信息以确保当前次数充足；使用 Toast 通知展示连接状态。
-- **API 通信网关**:
-  - `POST /dev-api/interview/mock/start`: 启动流。
-  - `POST /dev-api/interview/mock/answer`: 用户回答提交流。
-  - `GET /dev-api/interview/analysis/report/:resultId`: 请求分析报告。
+## 报告与验证
 
-## 5. UI 风格与交互约束 / UI Styles & Interaction Constraints
-- **交互规范**: 对话泡泡有不同的气泡样式和背景（用户侧为浅绿，AI 侧为纯白或浅灰色）。
-- **语音控制**: 开启语音录制时展示波形微动效，防止用户重复录音。录音时应处理浏览器音频调用授权异常。
-- **SSE 防撕裂**: 流数据解析时，必须有加载占位符，且接收到的 JSON 必须安全解析防止 `JSON.parse` 格式错误引发白屏。
+报告页从 `GET /interview/analysis/report/:resultId` 获取结构化评估，使用 RadarChart 展示能力维度，并展示匹配技能、缺失项和建议。缺少 resultId 时返回准备页。
 
-## 6. 调试与验证方法 / Debugging & Verification
-- **模拟流数据调试**:
-  - 若需要测试打字机渲染，可在本地调试时在 network 中调低网速，观察 `page.client.tsx` 中逐字累加的 `messages` 数组渲染是否抖动或导致页面滚动中断。
-- **异常捕获**:
-  - 测试断网情况下，SSE 连接被异常截断后，页面是否会弹出重试提示并保存已生成的问答上下文。
+`e2e/ui-redesign.spec.ts` 使用 Mock API 验证断点布局、简历预选、岗位键盘选择、下一步条件、类型弹窗与进入 input。它不发起真实 SSE、模型调用或权益扣减；完整会话、语音授权、断连恢复与交易仍需独立联调。相关修改必须保留流取消、定时器和监听清理逻辑。

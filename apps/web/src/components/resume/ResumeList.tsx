@@ -57,11 +57,11 @@ export default function ResumeList() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto py-8 px-4">
-      <div className="flex items-center justify-between mb-8">
+    <div className="workspace-page page-container">
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">简历中心</h1>
-          <p className="text-gray-500 mt-1">管理您的简历，AI 润色，随时备战面试</p>
+          <h1 className="workspace-heading">我的简历</h1>
+          <p className="text-gray-500 mt-1">让每段经历更清晰，让每次练习更有针对性。</p>
         </div>
         <div className="flex gap-3">
           <button
@@ -87,7 +87,7 @@ export default function ResumeList() {
           <Icon name="i-heroicons-arrow-path" className="w-8 h-8 text-primary-500 animate-spin" />
         </div>
       ) : resumes.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-gray-100 p-16 text-center shadow-sm">
+        <div className="surface-panel p-8 sm:p-16 text-center">
           <div className="w-20 h-20 bg-primary-50 rounded-full flex items-center justify-center mx-auto mb-6">
             <Icon name="i-heroicons-document-text" className="w-10 h-10 text-primary-500" />
           </div>
@@ -95,7 +95,7 @@ export default function ResumeList() {
           <p className="text-gray-500 mb-8 max-w-sm mx-auto">
             您可以新建一份空白简历在线编辑，或者直接上传您现有的 PDF / Word 文件。
           </p>
-          <div className="flex justify-center gap-4">
+          <div className="flex flex-wrap justify-center gap-4">
             <button
               onClick={() => setShowUpload(true)}
               className="px-6 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
@@ -104,6 +104,7 @@ export default function ResumeList() {
             </button>
             <button
               onClick={handleCreateEmpty}
+              disabled={isCreating}
               className="px-6 py-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium shadow-sm"
             >
               新建简历
@@ -116,7 +117,7 @@ export default function ResumeList() {
             <div key={resume._id} className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow relative group">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg ${resume.sourceType === 'editor' ? 'bg-blue-50 text-blue-600' : 'bg-green-50 text-green-600'}`}>
+                  <div className={`p-2 rounded-lg ${resume.sourceType === 'editor' ? 'bg-primary-50 text-primary-600' : 'bg-green-50 text-green-600'}`}>
                     <Icon name={resume.sourceType === 'editor' ? 'i-heroicons-pencil-square' : 'i-heroicons-document'} className="w-6 h-6" />
                   </div>
                   <div>
@@ -130,8 +131,8 @@ export default function ResumeList() {
                 </div>
                 <button
                   onClick={() => handleDelete(resume._id)}
-                  className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1"
-                  title="删除"
+                  className="icon-button text-gray-500 hover:text-red-600"
+                  aria-label={`删除简历：${resume.resumeName}`} title="删除"
                 >
                   <Icon name="i-heroicons-trash" className="w-5 h-5" />
                 </button>
@@ -145,13 +146,13 @@ export default function ResumeList() {
               <div className="flex gap-2">
                 <button
                   onClick={() => router.push(`/resume/${resume._id}`)}
-                  className="flex-1 bg-primary-50 text-primary-700 hover:bg-primary-100 py-2 rounded-lg text-sm font-medium transition-colors"
+                  className="min-h-11 flex-1 bg-primary-50 text-primary-700 hover:bg-primary-100 py-2 rounded-lg text-sm font-medium transition-colors"
                 >
                   编辑
                 </button>
                 <button
-                  onClick={() => router.push(`/interview/create?resumeId=${resume._id}`)}
-                  className="flex-1 border border-gray-200 text-gray-700 hover:bg-gray-50 py-2 rounded-lg text-sm font-medium transition-colors"
+                  onClick={() => router.push(`/interview/start?resumeId=${encodeURIComponent(resume._id)}`)}
+                  className="min-h-11 flex-1 border border-gray-200 text-gray-700 hover:bg-gray-50 py-2 rounded-lg text-sm font-medium transition-colors"
                 >
                   发起面试
                 </button>
