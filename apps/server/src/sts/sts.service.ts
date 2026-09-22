@@ -134,6 +134,7 @@ export class StsService {
       stsToken: credentials.securityToken,
       secure: true,
     });
-    return client.signatureUrl(key, { expires: 60 });
+    // OSS 将到期时间取整到秒；59 秒保证实际有效期不会超过 60 秒。
+    return client.signatureUrl(key, { expires: 59 });
   }
 }
