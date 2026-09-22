@@ -124,7 +124,7 @@ export default function ReportPageContent() {
     return isRelated && score < 70
   })()
 
-  if (serviceType !== 'resume' && resultId) return <InterviewReview resultId={resultId} />
+  if (serviceType !== 'resume' && resultId) return <InterviewReview key={resultId} resultId={resultId} />
   if (error) return <div role="alert" className="p-8"><p>{error}</p><button onClick={() => setRetry(value => value + 1)} className="mt-5 min-h-11 rounded-full border border-line px-6">重新读取</button></div>
 
   if (loading) {
