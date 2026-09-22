@@ -14,6 +14,21 @@ describe('startup configuration', () => {
     });
     expect(result.error).toBeUndefined();
     expect(result.value.PORT).toBe(3000);
+    expect(result.value.DEEPSEEK_MODEL).toBe('deepseek-flash');
+    expect(result.value.DEEPSEEK_TEMPERATURE).toBe(0.7);
+    expect(result.value.MAX_TOKENS).toBe(4000);
+  });
+  it('accepts zero temperature and rejects invalid token limits', () => {
+    const result = configValidationSchema.validate({
+      ...config,
+      DEEPSEEK_TEMPERATURE: 0,
+      MAX_TOKENS: 1000,
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.value.DEEPSEEK_TEMPERATURE).toBe(0);
+    expect(
+      configValidationSchema.validate({ ...config, MAX_TOKENS: 0 }).error,
+    ).toBeDefined();
   });
   it.each(['MONGODB_URI', 'JWT_SECRET', 'DEEPSEEK_API_KEY'])(
     'fails early without %s',

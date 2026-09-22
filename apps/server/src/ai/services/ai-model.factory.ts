@@ -43,9 +43,9 @@ export class AIModelFactory {
    *
    * 参数都来自环境变量，这样可以根据部署环境灵活配置：
    * - DEEPSEEK_API_KEY：API 密钥
-   * - DEEPSEEK_MODEL：模型名称（deepseek-chat 或 deepseek-reasoner）
+   * - DEEPSEEK_MODEL：模型名称（默认 deepseek-flash）
    * - DEEPSEEK_TEMPERATURE：温度参数（控制随机性）
-   * - DEEPSEEK_MAX_TOKENS：最大 Token 数
+   * - MAX_TOKENS：最大 Token 数
    */
   createDefaultModel() {
     const apiKey = this.configService.get<string>('DEEPSEEK_API_KEY');
@@ -53,16 +53,15 @@ export class AIModelFactory {
       throw new Error('DEEPSEEK_API_KEY 不存在');
     }
 
-    // deepseek-reasoner是深度搜索
-    // deepseek-chat是快速聊天
+    const configuredTemperature = this.configService.get<number>(
+      'DEEPSEEK_TEMPERATURE',
+    );
     return new ChatDeepSeek({
-      apiKey: apiKey || '',
+      apiKey,
       model:
-        this.configService.get<string>('DEEPSEEK_MODEL') || 'deepseek-chat',
-      temperature:
-        Number(this.configService.get<string>('DEEPSEEK_TEMPERATURE')) || 0.7,
-      maxTokens:
-        Number(this.configService.get<string>('DEEPSEEK_MAX_TOKENS')) || 4000,
+        this.configService.get<string>('DEEPSEEK_MODEL') || 'deepseek-flash',
+      temperature: configuredTemperature ?? 0.7,
+      maxTokens: this.configService.get<number>('MAX_TOKENS') ?? 4000,
     });
   }
 

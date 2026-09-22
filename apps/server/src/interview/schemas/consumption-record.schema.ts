@@ -75,7 +75,7 @@ export class ConsumptionRecord {
 
   // ============ AI 调用相关 ============
   @Prop()
-  aiModel?: string; // 使用的AI模型（如 deepseek-chat）
+  aiModel?: string; // 使用的AI模型（如 deepseek-flash）
 
   @Prop()
   promptTokens?: number; // 输入Token数
