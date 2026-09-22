@@ -180,3 +180,10 @@ flowchart LR
 - 扣次前完成简历解析和开场快照；扣次后数据库错误保留同 ID 恢复。取消使用 `POST mock/start/:requestId/cancel`，body 与原开始请求一致；活跃准备任务需等待租约释放，已经 ready 的场次不会退款。
 - 取消可先于原开始请求到达：保存取消记录拦截迟到请求。补偿调用可重复；消费流水按 resultId 覆盖修复。取消与准备状态均持久化，当前由用户重试恢复，没有后台扫描任务。
 - 新前后端须配套发布；旧开始请求缺少 requestId 返回 400，刷新页面后使用新协议。测试 `start-recovery.cjs` 仅使用专用本地 Mongo 和合成账户，不调用付费供应商。
+
+
+### 从练习记录取消未完成开场
+
+`POST mock/start-result/:resultId/cancel` 仅查询当前用户已有场次，使用同一取消/补偿流程，不依赖浏览器原始请求和简历输入。缺失或其他用户记录返回 404；旧记录没有 startStatus/requestId 时拒绝退款；已 ready 返回 ready，让用户继续原场次；prepared 有活跃租约时返回 409；refunding/cancelled 可重复核对，不能重复退还。
+
+模拟面试历史列表额外返回可选 startStatus，旧记录保持原结构；不返回请求摘要、简历快照、任务凭据。该入口为用户主动恢复，不意味着后台自动扫描。

@@ -48,7 +48,11 @@ if (process.env.RUN_LOCAL_INTEGRATION !== '1' || uri !== 'mongodb://127.0.0.1:27
   const reports = new InterviewReportService(results, ai);
   let ledger = new QuotaLedgerService(users, operations);
   let service = new InterviewStartService(results, consumption, ledger, ai);
+  const history = Object.assign(Object.create(InterviewService.prototype), { aiInterviewResultModel: results, reports });
   const facade = {
+    getSpecialInterviewHistory: (uid, query) => history.getSpecialInterviewHistory(uid, query),
+    getBehaviorInterviewHistory: (uid, query) => history.getBehaviorInterviewHistory(uid, query),
+    cancelMockInterviewStartResult: (uid, rid) => service.cancelResult(uid, rid),
     answerMockInterviewWithStream: (uid, sid, answer, requestId, expectedVersion) => turns.answer(uid, { sessionId: sid, answer, requestId, expectedVersion }),
     resumeMockInterview: (uid, rid) => turns.resume(uid, rid),
     endMockInterview: (uid, rid) => turns.end(uid, rid),
@@ -69,8 +73,8 @@ if (process.env.RUN_LOCAL_INTEGRATION !== '1' || uri !== 'mongodb://127.0.0.1:27
   const balance = async () => (await users.findById(userId)).specialRemainingCount;
   const run = (s, d, resolver = async () => '') => lastValueFrom(s.start(userId, d, resolver).pipe(toArray()));
   const proxy = (target, method, intercept) => new Proxy(target, { get(t, key) { if (key === method) return intercept; const v = Reflect.get(t, key); return typeof v === 'function' ? v.bind(t) : v; } });
-  async function http(path, body, auth = true) {
-    const response = await fetch(`http://127.0.0.1:${port}/interview/mock/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body), signal: AbortSignal.timeout(10000) });
+  async function http(path, body, auth = true, bearer = token) {
+    const response = await fetch(`http://127.0.0.1:${port}/interview/mock/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: `Bearer ${bearer}` } : {}) }, body: JSON.stringify(body), signal: AbortSignal.timeout(10000) });
     const text = await response.text();
     return { status: response.status, text, events: text.split('\n').filter(l => l.startsWith('data: ')).map(l => JSON.parse(l.slice(6))) };
   }
@@ -111,12 +115,25 @@ if (process.env.RUN_LOCAL_INTEGRATION !== '1' || uri !== 'mongodb://127.0.0.1:27
     // Balance committed but ready snapshot fails: cancellation refunds exactly once.
     const brokenResults = proxy(results, 'findOneAndUpdate', (filter, update, options) => { if (update.$set?.startStatus === 'ready') throw new Error('ready unavailable'); return results.findOneAndUpdate(filter, update, options); });
     const refund = dto();
-    assert.equal((await run(new InterviewStartService(brokenResults, consumption, ledger, ai), refund)).at(-1).type, 'error');
+    const failedOpening = await run(new InterviewStartService(brokenResults, consumption, ledger, ai), refund);
+    assert.equal(failedOpening.at(-1).type, 'error');
+    const failedId = failedOpening.find(event => event.resultId).resultId;
     assert.equal(await balance(), 2);
-    await Promise.allSettled(Array.from({ length: 6 }, () => service.cancel(userId, refund)));
-    assert.equal((await service.cancel(userId, refund)).status, 'cancelled');
+    const foreign = new JwtService({ secret: 'start-local-test-secret' }).sign({ userId: String(new mongoose.Types.ObjectId()) });
+    assert.equal((await http(`start-result/${failedId}/cancel`, {}, true, foreign)).status, 404);
+    assert.equal((await http(`start-result/${failedId}/cancel`, {}, false)).status, 401);
+    // Losing browser state does not prevent cancellation: only resultId is supplied.
+    await Promise.allSettled(Array.from({ length: 6 }, () => http(`start-result/${failedId}/cancel`, {})));
+    assert.equal(JSON.parse((await http(`start-result/${failedId}/cancel`, {})).text).data.status, 'cancelled');
     assert.equal(await balance(), 3);
     assert.equal((await run(service, refund)).at(-1).startStatus, 'cancelled');
+    const readyId = concurrent.find(r => r.events.at(-1)?.type === 'waiting').events.at(-1).resultId;
+    assert.equal(JSON.parse((await http(`start-result/${readyId}/cancel`, {})).text).data.status, 'ready');
+    assert.equal(await balance(), 3);
+    const listResponse = await fetch(`http://127.0.0.1:${port}/interview/special/history`, { headers: { Authorization: `Bearer ${token}` } });
+    const historyPage = (await listResponse.json()).data;
+    assert.equal(historyPage.list.find(item => item.resultId === failedId).startStatus, 'cancelled');
+    assert(historyPage.list.every(item => !('startPayloadHash' in item) && !('sessionState' in item) && !('startLeaseToken' in item)));
     // A stale debit that read pending before cancellation cannot cross the barrier.
     let release, entered;
     const gate = new Promise(r => { release = r; });
@@ -132,7 +149,14 @@ if (process.env.RUN_LOCAL_INTEGRATION !== '1' || uri !== 'mongodb://127.0.0.1:27
     assert(!('quotaReceipt' in publicUser)); assert(!('quotaRevision' in publicUser));
     console.log('PASS: JWT/DTO/HTTP/SSE; 8 concurrent starts deduct once; restart replay; payload conflict; zero-quota cancellation; cancellation before delayed start; resume failure; receipt recovery; exactly-once refund; stale debit fencing; hidden account metadata. No paid providers.');
     if (process.env.KEEP_START_SERVER === '1') {
-      await writeFile(process.env.START_FIXTURE_PATH || '/tmp/msm-phase1-local/start-ui-fixture.json', JSON.stringify({ token, userId }), { mode: 0o600 });
+      const pendingIds = [];
+      if (process.env.KEEP_RECOVERY_FIXTURES === '1') {
+        for (let n = 0; n < 2; n++) {
+          const events = await run(new InterviewStartService(brokenResults, consumption, ledger, ai), { ...dto(), company: '待恢复合成测试', positionName: `未确认开场 ${n + 1}` });
+          assert.equal(events.at(-1).type, 'error'); pendingIds.push(events.find(event => event.resultId).resultId);
+        }
+      }
+      await writeFile(process.env.START_FIXTURE_PATH || '/tmp/msm-phase1-local/start-ui-fixture.json', JSON.stringify({ token, userId, pendingIds }), { mode: 0o600 });
       console.log(`Browser fixture ready on ${port}`);
       await new Promise(resolve => process.once('SIGTERM', resolve));
     }

@@ -1,4 +1,5 @@
 import request from '@/lib/request'
+import { isAxiosError } from 'axios'
 
 export type HistoryType = 'resume' | 'special' | 'behavior'
 export type HistoryStatus = 'completed' | 'in_progress' | 'paused' | 'abandoned' | 'unknown'
@@ -9,6 +10,7 @@ export interface HistoryItem {
   position: string
   createdAt: string | null
   status: HistoryStatus
+  startStatus?: 'prepared' | 'ready' | 'refunding' | 'cancelled'
   reportStatus: HistoryReportStatus
 }
 export interface HistoryPage { list: HistoryItem[]; total: number }
@@ -29,6 +31,7 @@ export function parseHistoryPage(value: unknown, type: HistoryType, page: number
     const reportStatus: HistoryReportStatus = ['pending', 'generating', 'completed', 'failed', 'insufficient_data'].includes(String(item.reportStatus))
       ? item.reportStatus as HistoryReportStatus : 'unknown'
     return { resultId: item.resultId, company: typeof item.company === 'string' ? item.company : '', position: typeof item.position === 'string' ? item.position : '',
+      ...(['prepared', 'ready', 'refunding', 'cancelled'].includes(String(item.startStatus)) ? { startStatus: item.startStatus as HistoryItem['startStatus'] } : {}),
       createdAt: typeof item.createdAt === 'string' && Number.isFinite(Date.parse(item.createdAt)) ? item.createdAt : null, status, reportStatus }
   })
   return { list, total }
@@ -50,4 +53,17 @@ export const historyLabels: Record<HistoryStatus, { label: string; icon: string 
 }
 export const reportLabels: Record<HistoryReportStatus, string> = {
   pending: '待生成', generating: '分析中', completed: '已就绪', failed: '生成失败', insufficient_data: '信息不足', unknown: '查看详情'
+}
+
+
+export async function cancelHistoryStart(resultId: string) {
+  let response: unknown
+  try { response = await request.post(`/interview/mock/start-result/${encodeURIComponent(resultId)}/cancel`, {}) }
+  catch (error: unknown) {
+    if (isAxiosError(error) && error.response?.status === 409) throw new Error('开场仍在处理中，请稍后再取消或刷新记录确认状态')
+    if (isAxiosError(error) && error.response?.status === 404) throw new Error('这条记录已不可用，请刷新列表')
+    throw new Error('取消暂未完成，请稍后重试；本次结果仍会保留')
+  }
+  if (!record(response) || response.resultId !== resultId || !['ready', 'cancelled'].includes(String(response.status))) throw new Error('取消结果尚未确认，请重试')
+  return response.status as 'ready' | 'cancelled'
 }

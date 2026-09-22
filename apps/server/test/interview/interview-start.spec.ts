@@ -37,3 +37,48 @@ it('rejects an empty target before preparing a resume or debiting quota', async 
   expect(quota.apply).not.toHaveBeenCalled();
   expect(resolveResume).not.toHaveBeenCalled();
 });
+
+describe('history opening cancellation boundary', () => {
+  const results = { findOne: jest.fn() };
+  const quota = { reverse: jest.fn() };
+  const service = new InterviewStartService(
+    results as unknown as Model<AIInterviewResultDocument>,
+    {} as Model<ConsumptionRecordDocument>,
+    quota as unknown as QuotaLedgerService,
+    {} as InterviewAIService,
+  );
+  beforeEach(() => jest.resetAllMocks());
+  it('only queries the authenticated owner and rejects missing records', async () => {
+    results.findOne.mockResolvedValue(null);
+    await expect(service.cancelResult('owner', 'rid')).rejects.toThrow(
+      '面试记录不存在',
+    );
+    expect(results.findOne).toHaveBeenCalledWith({
+      userId: 'owner',
+      resultId: 'rid',
+    });
+    expect(quota.reverse).not.toHaveBeenCalled();
+  });
+  it('does not manufacture a refundable opening for legacy records', async () => {
+    results.findOne.mockResolvedValue({ userId: 'owner', resultId: 'rid' });
+    await expect(service.cancelResult('owner', 'rid')).rejects.toThrow(
+      '不属于可取消的开场',
+    );
+    expect(quota.reverse).not.toHaveBeenCalled();
+  });
+  it('ready and already-cancelled openings are not refunded again', async () => {
+    for (const status of ['ready', 'cancelled']) {
+      results.findOne.mockResolvedValue({
+        userId: 'owner',
+        resultId: 'rid',
+        startStatus: status,
+        startRequestId: 'request',
+      });
+      await expect(service.cancelResult('owner', 'rid')).resolves.toEqual({
+        status,
+        resultId: 'rid',
+      });
+    }
+    expect(quota.reverse).not.toHaveBeenCalled();
+  });
+});

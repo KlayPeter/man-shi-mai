@@ -226,6 +226,20 @@ export class InterviewController {
     );
   }
 
+  @Post('mock/start-result/:resultId/cancel')
+  @ApiOperation({ summary: '取消当前用户未完成的面试开场' })
+  async cancelMockInterviewStartResult(
+    @Param('resultId') resultId: string,
+    @Request() req: { user: { userId: string } },
+  ) {
+    return ResponseUtil.success(
+      await this.interviewService.cancelMockInterviewStartResult(
+        req.user.userId,
+        resultId,
+      ),
+    );
+  }
+
   @Post('mock/answer')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: '回答面试问题（流式响应）' })

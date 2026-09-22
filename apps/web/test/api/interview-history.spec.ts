@@ -29,3 +29,10 @@ describe('练习记录契约', () => {
     expect(() => parseHistoryPage([{ position: 'no id' }], 'special', 1, 10)).toThrow()
   })
 })
+
+it('保留开场恢复状态，旧记录无新字段仍可读', () => {
+  for (const startStatus of ['prepared', 'refunding', 'ready', 'cancelled']) {
+    expect(parseHistoryPage([{ ...row, startStatus }], 'special', 1, 10).list[0].startStatus).toBe(startStatus)
+  }
+  expect(parseHistoryPage([row], 'special', 1, 10).list[0].startStatus).toBeUndefined()
+})

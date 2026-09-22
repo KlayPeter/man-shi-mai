@@ -3,6 +3,7 @@ import {
   ConflictException,
   HttpException,
   Injectable,
+  NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -366,9 +367,20 @@ export class InterviewStartService {
   }
 
   async cancel(userId: string, dto: StartMockInterviewDto) {
-    const requestId = dto.requestId;
-    const resultId = this.key(userId, requestId);
-    let record = await this.ensureRecord(userId, dto);
+    return this.cancelRecord(await this.ensureRecord(userId, dto));
+  }
+
+  /** 仅按归属查询已有场次，不需要浏览器保留简历或原始请求。 */
+  async cancelResult(userId: string, resultId: string) {
+    const record = await this.results.findOne({ userId, resultId });
+    if (!record) throw new NotFoundException('面试记录不存在');
+    if (!record.startStatus || !record.startRequestId)
+      throw new ConflictException('该记录不属于可取消的开场，请通过面试室处理');
+    return this.cancelRecord(record);
+  }
+
+  private async cancelRecord(record: AIInterviewResultDocument) {
+    const { userId, resultId } = record;
     if (record.startStatus === 'ready') return { status: 'ready', resultId };
     if (record.startStatus === 'cancelled')
       return { status: 'cancelled', resultId };

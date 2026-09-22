@@ -881,6 +881,10 @@ export class InterviewService {
     return this.starts.cancel(userId, dto);
   }
 
+  cancelMockInterviewStartResult(userId: string, resultId: string) {
+    return this.starts.cancelResult(userId, resultId);
+  }
+
   answerMockInterviewWithStream(
     userId: string,
     sessionId: string,
@@ -1211,7 +1215,7 @@ export class InterviewService {
       this.aiInterviewResultModel
         .find(filter)
         .select(
-          'resultId company position status reportStatus reportLeaseExpiresAt qaList.question qaList.answer createdAt -_id',
+          'resultId company position status startStatus reportStatus reportLeaseExpiresAt qaList.question qaList.answer createdAt -_id',
         )
         .sort({ createdAt: -1, _id: -1 })
         .skip((query.page - 1) * query.limit)
@@ -1233,6 +1237,7 @@ export class InterviewService {
         createdAt: item.createdAt,
         status: item.status,
         reportStatus: this.reports.status(item),
+        ...(item.startStatus ? { startStatus: item.startStatus } : {}),
       })),
       total,
       page: query.page,

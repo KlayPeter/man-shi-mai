@@ -25,6 +25,7 @@ export interface InterviewHistoryItem {
   createdAt?: Date;
   status: string;
   reportStatus?: string;
+  startStatus?: 'prepared' | 'ready' | 'refunding' | 'cancelled';
 }
 
 export interface InterviewHistoryPage {
