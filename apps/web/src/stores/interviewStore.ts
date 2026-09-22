@@ -20,7 +20,20 @@ interface Message {
   [key: string]: any
 }
 
+export interface PendingInterviewStart {
+  requestId: string
+  interviewType: 'special' | 'behavior'
+  positionName: string
+  company: string
+  jd: string
+  resumeId?: string
+  resumeContent?: string
+  minSalary?: number
+  maxSalary?: number
+}
+
 interface InterviewState {
+  pendingStart: PendingInterviewStart | null
   questionVersion: number
   answerDraft: string
   pendingAnswer: { requestId: string; expectedVersion: number; answer: string } | null
@@ -72,6 +85,7 @@ const isEmpty = (obj: any) => {
 export const useInterviewStore = create<InterviewState>()(
   persist(
     (set, get) => ({
+      pendingStart: null,
       questionVersion: 0,
       answerDraft: '',
       pendingAnswer: null,
@@ -189,6 +203,7 @@ export const useInterviewStore = create<InterviewState>()(
       },
       resetInterview: () => {
         set({
+          pendingStart: null,
           questionVersion: 0,
           answerDraft: '',
           pendingAnswer: null,
@@ -210,6 +225,7 @@ export const useInterviewStore = create<InterviewState>()(
           selectedPosition: {},
           resumeId: null,
           resumeText: '',
+          pendingStart: null,
           questionVersion: 0,
           answerDraft: '',
           pendingAnswer: null,

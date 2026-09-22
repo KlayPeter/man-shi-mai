@@ -1,3 +1,4 @@
+import { InterviewStartService } from '../../src/interview/services/interview-start.service';
 import { InterviewTurnService } from '../../src/interview/services/interview-turn.service';
 import { Test } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
@@ -30,6 +31,7 @@ describe('interview reliability', () => {
   };
   const consumption = { findOne: jest.fn(), create: jest.fn() };
   const quiz = { findOne: jest.fn() };
+  const starts = { start: jest.fn() };
   const continuation = { continue: jest.fn() };
 
   beforeEach(async () => {
@@ -37,6 +39,7 @@ describe('interview reliability', () => {
     const module = await Test.createTestingModule({
       providers: [
         InterviewService,
+        { provide: InterviewStartService, useValue: starts },
         SessionManager,
         ...[
           ConfigService,
@@ -75,19 +78,20 @@ describe('interview reliability', () => {
     expect(user.findByIdAndUpdate).not.toHaveBeenCalled();
   });
 
-  it.each([MockInterviewType.SPECIAL, MockInterviewType.COMPREHENSIVE])(
-    'never credits a zero-quota %s interview',
-    async (interviewType) => {
-      user.findOneAndUpdate.mockResolvedValue(null);
-      const events = await lastValueFrom(
-        service
-          .startMockInterviewWithStream(userId, { interviewType })
-          .pipe(timeout(1000), toArray()),
-      );
-      expect(events.map((event) => event.type)).toEqual(['error']);
-      expect(user.findByIdAndUpdate).not.toHaveBeenCalled();
-    },
-  );
+  it('delegates opening to the durable start service without another debit', () => {
+    const dto = {
+      requestId: '4f387521-e4c9-46da-ab7f-da395e70254f',
+      interviewType: MockInterviewType.SPECIAL,
+      positionName: '前端',
+    };
+    service.startMockInterviewWithStream(userId, dto);
+    expect(starts.start).toHaveBeenCalledWith(
+      userId,
+      dto,
+      expect.any(Function),
+    );
+    expect(user.findOneAndUpdate).not.toHaveBeenCalled();
+  });
 
   it('does not refund another request that is still pending', async () => {
     consumption.findOne.mockResolvedValue({ status: 'pending' });

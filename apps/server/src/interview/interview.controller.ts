@@ -3,6 +3,7 @@ import { InterviewSpeechService } from './services/interview-speech.service';
 import { InterviewHistoryQueryDto } from './dto/interview-history.dto';
 import {
   Controller,
+  ParseUUIDPipe,
   Post,
   Body,
   Request,
@@ -208,6 +209,23 @@ export class InterviewController {
   /**
    * 回答面试问题 - SSE流式响应
    */
+  @Post('mock/start/:requestId/cancel')
+  @UseGuards(JwtAuthGuard)
+  async cancelMockInterviewStart(
+    @Param('requestId', new ParseUUIDPipe({ version: '4' })) requestId: string,
+    @Body() dto: StartMockInterviewDto,
+    @Request() req: { user: { userId: string } },
+  ) {
+    if (dto.requestId !== requestId)
+      throw new BadRequestException('开始请求标识不一致');
+    return ResponseUtil.success(
+      await this.interviewService.cancelMockInterviewStart(
+        req.user.userId,
+        dto,
+      ),
+    );
+  }
+
   @Post('mock/answer')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: '回答面试问题（流式响应）' })

@@ -137,7 +137,7 @@ flowchart LR
 
 ## 持久化回合与恢复
 
-`InterviewTurnService` 接管回答、暂停、恢复和结束；`InterviewService` 保留创建场次与旧功能入口，不再使用模拟面试内存 Map。
+`InterviewTurnService` 接管回答、暂停、恢复和结束；`InterviewService` 保留创建场次委托与旧功能入口，不再使用模拟面试内存 Map。
 
 ```mermaid
 flowchart LR
@@ -156,7 +156,27 @@ flowchart LR
 - 取消 SSE 订阅不会取消模型费用。生成超时后的迟到内容不再发送或写入，但当前图调用尚未完整贯通供应商取消信号；租约超时允许用户重试，不表示模型计费严格一次。
 - `POST mock/resume/:resultId` 同时支持进行中场次、暂停场次和已完成场次的只读恢复；返回问答白名单、问题版本、最近确认请求 ID 及忙碌截止时间，不返回简历快照和租约凭据。暂停恢复调整开始时间以排除暂停时段。暂停、结束均拒绝与活跃回合争抢状态，重复暂停/结束可安全重试。
 - `interview-session.ts` 校验 Mixed 快照并恢复 Date；兼容历史可选字段的 null。旧无版本记录从已保存题数建立首个版本，无批量回填。已有问答与快照不一致时明确拒绝，不擅自拼接或覆盖用户记录。
-- 超时结束也保存最后一条回答，供复盘引用；主动结束不伪造新的问答。开场创建、扣次退款与消费流水仍由旧创建链路处理，其幂等恢复不在本回合保证内。
+- 超时结束也保存最后一条回答，供复盘引用；主动结束不伪造新的问答。开场创建与扣次恢复由下述 `InterviewStartService` 处理。
 - 部署需先停止旧后端实例，再发布新后端与新前端，避免旧实现绕过版本条件写入。旧客户端缺少字段会得到 400，需刷新并恢复场次；不可将新前端接到旧回答服务后重试。尚未实际部署。
 
 验证入口：`test/interview/interview-turn.spec.ts`、`test/interview/interview-agent.spec.ts` 和独立数据库的 `test/integration/turn-recovery.cjs`。后者使用真实 JWT/DTO/HTTP/SSE/Mongo 与模型 Stub，验证并发、重放、服务实例重建、过期租约、暂停/结束竞争、失败重试及最后一条回答。模型内容质量另行验收。
+
+
+## 开场确认与扣次恢复
+
+```mermaid
+flowchart LR
+    A[固定请求 ID] --> B[保存岗位 简历 开场]
+    B --> C[权益原子扣次与回执]
+    C --> D[场次 ready]
+    D --> E[消费流水与 SSE 确认]
+    C -- 故障 --> F[同 ID 重试补齐]
+    F --> D
+    C -- 取消 --> G[阻止迟到扣次 幂等退款]
+```
+
+- `POST mock/start` 要求 UUID v4 `requestId`、面试类型及非空岗位；同 ID 不可更换参数，重试读取持久化结果。简历可选；开场仍为本地模板，无模型调用。
+- `InterviewStartService` 管理 prepared → ready 或 refunding → cancelled。准备与确认由 120 秒租约隔离；ready 前禁止回答、恢复、暂停和结束。旧记录无 startStatus 时沿用原兼容路径，无批量回填。
+- 扣次前完成简历解析和开场快照；扣次后数据库错误保留同 ID 恢复。取消使用 `POST mock/start/:requestId/cancel`，body 与原开始请求一致；活跃准备任务需等待租约释放，已经 ready 的场次不会退款。
+- 取消可先于原开始请求到达：保存取消记录拦截迟到请求。补偿调用可重复；消费流水按 resultId 覆盖修复。取消与准备状态均持久化，当前由用户重试恢复，没有后台扫描任务。
+- 新前后端须配套发布；旧开始请求缺少 requestId 返回 400，刷新页面后使用新协议。测试 `start-recovery.cjs` 仅使用专用本地 Mongo 和合成账户，不调用付费供应商。

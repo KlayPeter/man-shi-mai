@@ -23,6 +23,10 @@ export enum MockInterviewType {
  * 开始模拟面试请求 DTO
  */
 export class StartMockInterviewDto {
+  @ApiProperty({ description: '本次开始的请求 ID；断线重试复用' })
+  @IsUUID('4')
+  requestId: string;
+
   @ApiProperty({
     description: '面试类型',
     enum: MockInterviewType,
@@ -236,4 +240,11 @@ export class MockInterviewEventDto {
 
   questionVersion?: number;
   requestId?: string;
+  startStatus?: 'prepared' | 'ready' | 'refunding' | 'cancelled';
+  conversationHistory?: Array<{
+    role: 'interviewer' | 'candidate';
+    content: string;
+    timestamp: Date;
+  }>;
+  status?: string;
 }

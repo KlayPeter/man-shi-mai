@@ -108,6 +108,8 @@ export class InterviewTurnService {
       'sessionState.sessionId': dto.sessionId,
     });
     if (!record) throw new NotFoundException('面试记录不存在');
+    if (record.startStatus && record.startStatus !== 'ready')
+      throw new ConflictException('开场尚未完成，请重试或取消本次开始');
     const hash = createHash('sha256').update(dto.answer).digest('hex');
     if (record.status === 'paused' || record.status === 'abandoned')
       throw new ConflictException('面试已暂停或放弃，请恢复状态');
@@ -348,6 +350,8 @@ export class InterviewTurnService {
   private async load(userId: string, resultId: string) {
     const record = await this.results.findOne({ userId, resultId });
     if (!record) throw new NotFoundException('面试记录不存在');
+    if (record.startStatus && record.startStatus !== 'ready')
+      throw new ConflictException('开场尚未完成，请重试或取消本次开始');
     return record;
   }
 

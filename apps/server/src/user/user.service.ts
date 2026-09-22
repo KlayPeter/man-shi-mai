@@ -64,6 +64,8 @@ export class UserService {
     // 返回用户信息（不包含密码）
     const result = newUser.toObject();
     delete result.password;
+    delete result.quotaRevision;
+    delete result.quotaReceipt;
     return result;
   }
 

@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Schema as MongoSchema } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
 export type UserDocument = User &
@@ -75,6 +75,12 @@ export class User {
 
   @Prop({ default: 0 })
   behaviorRemainingCount: number; // 综合面试剩余次数
+
+  @Prop({ default: 0, select: false })
+  quotaRevision?: number;
+
+  @Prop({ type: MongoSchema.Types.Mixed, select: false })
+  quotaReceipt?: { operationId: string; appliedAt: Date };
 
   // 模拟支付相关
   @Prop({ default: false })

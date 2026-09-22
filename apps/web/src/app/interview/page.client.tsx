@@ -9,7 +9,7 @@ import { useUserStore } from '@/stores/userStore'
 import { toast } from '@/stores/toastStore'
 import { ssePost } from '@/lib/sse'
 import request from '@/lib/request'
-import { recoverInterview } from '@/api/interview-session'
+import { recoverInterview, parseRecoveredInterview } from '@/api/interview-session'
 import { getUserInfoAPI } from '@/api/user'
 import Icon from '@/components/ui/Icon'
 import InterviewConfirmModal from '@/components/interview/InterviewConfirmModal'
@@ -55,6 +55,8 @@ export default function InterviewPageContent() {
   const inputMessage = useInterviewStore(s => s.answerDraft)
   const setInputMessage = (answerDraft: string) => useInterviewStore.setState({ answerDraft })
   const answerInFlight = useRef(false)
+  const startInFlight = useRef(false)
+  const [startError, setStartError] = useState('')
   const recoveryRef = useRef<AbortController | null>(null)
   const [isRecovering, setIsRecovering] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
@@ -138,6 +140,11 @@ export default function InterviewPageContent() {
 
     // 等待 zustand persist 从 localStorage 恢复状态
     const timer = setTimeout(() => {
+      if (useInterviewStore.getState().pendingStart && serviceType !== 'resume') {
+        setShowRestoreModal(true)
+        if (step !== 'interview') updateQuery({ step: 'interview' })
+        return
+      }
       if (resultId && isHistory) {
         loadHistory(resultId)
         return
@@ -295,7 +302,7 @@ export default function InterviewPageContent() {
   // interview 步骤：进入时倒计时后启动 SSE
   useEffect(() => {
     if (step !== 'interview') return
-    if (interviewStore.interviewStatus === 'starting') {
+    if (interviewStore.interviewStatus === 'starting' && !useInterviewStore.getState().pendingStart) {
       setShowCountdown(true)
       setCountdown(3)
       let c = 3
@@ -334,6 +341,7 @@ export default function InterviewPageContent() {
   const handleRestoreInterview = async () => {
     setShowRestoreModal(false)
     const currentState = useInterviewStore.getState()
+    if (currentState.pendingStart) { void startInterviewSSE(); return }
     const rid = resultId || currentResultId || currentState.resultId
     if (!rid) {
       toast({ title: '恢复失败', description: '面试ID不存在', color: 'red' })
@@ -375,6 +383,7 @@ export default function InterviewPageContent() {
 
   const handleDiscardInterview = () => {
     setShowRestoreModal(false)
+    if (useInterviewStore.getState().pendingStart) { void cancelInterviewStart(); return }
     clearActiveInterview() // 清除活跃面试状态
     interviewStore.resetInterview()
     router.push('/interview/start')
@@ -533,63 +542,94 @@ export default function InterviewPageContent() {
   }, [])
 
   const startInterviewSSE = useCallback(async () => {
-    // 使用 getState() 获取最新的 store 值
-    const currentState = useInterviewStore.getState()
-
-    const params = {
-      interviewType: serviceType,
-      resumeId: currentState.resumeId || '',
-      resumeContent: currentState.resumeText || '',
-      company: currentState.selectedPosition?.company || '',
-      positionName: currentState.selectedPosition?.positionName || '',
-      minSalary: currentState.selectedPosition?.minSalary || undefined,
-      maxSalary: currentState.selectedPosition?.maxSalary || undefined,
-      jd: currentState.selectedPosition?.jd || ''
+    if (startInFlight.current || serviceType === 'resume') return
+    startInFlight.current = true
+    setStartError('')
+    setIsStreaming(true)
+    const current = useInterviewStore.getState()
+    const params = current.pendingStart || {
+      requestId: crypto.randomUUID(), interviewType: serviceType,
+      resumeId: current.resumeId || undefined, resumeContent: current.resumeText || undefined,
+      company: current.selectedPosition.company || '', positionName: current.selectedPosition.positionName || '',
+      minSalary: current.selectedPosition.minSalary, maxSalary: current.selectedPosition.maxSalary,
+      jd: current.selectedPosition.jd || '',
     }
-
-    let lastInterviewerMessage = ''
-    useInterviewStore.setState({ interviewStatus: 'in_progress', questionVersion: 0, pendingAnswer: null, answerDraft: '' })
-    const connection = ssePost('/interview/mock/start', params, {
-      callbacks: {
-        onMessage: (data) => {
-          const { type, content, resultId: rid, sessionId: sid, interviewerName } = data
-          if (type === 'start') {
-            if (rid) { interviewStore.setResultId(rid); setCurrentResultId(rid); updateQuery({ step: 'interview', resultId: rid }) }
-            if (sid) interviewStore.setSessionId(sid)
-            if (interviewerName) interviewStore.setInterviewerName(interviewerName)
-            if (sid && rid) saveActiveInterview(sid, rid, serviceType)
-            interviewStore.updateLastMessage(content || '', 'interviewer')
-            lastInterviewerMessage = content || ''
-            setIsStreaming(true)
-            scrollToBottom()
-          } else if (type === 'waiting') {
-            interviewStore.setInterviewEventType('waiting')
-            if (lastInterviewerMessage) {
-              speechSynthesis.handleStreamText(lastInterviewerMessage, true)
-            }
-            setIsStreaming(false)
-          } else if (type === 'end') {
-            interviewStore.setInterviewEventType('end')
-            interviewStore.setInterviewStatus('ended')
-            clearActiveInterview() // 清除活跃面试状态
-            refreshUserInfo() // 刷新用户信息以更新剩余次数
-            if (lastInterviewerMessage) {
-              speechSynthesis.handleStreamText(lastInterviewerMessage, true)
-            }
-            setIsStreaming(false)
-          } else if (type === 'error') {
-            toast({ title: '面试出错', description: content || '请稍后重试', color: 'red' })
-            setIsStreaming(false)
-          }
-        },
-        onError: (error) => {
-          toast({ title: '面试启动失败', description: error.message, color: 'red' })
-          interviewStore.setInterviewStatus('idle')
-        }
-      }
+    useInterviewStore.setState({ pendingStart: params, interviewStatus: 'starting',
+      ...(current.pendingStart ? {} : { messages: [], sessionId: null, resultId: null, questionVersion: 0, pendingAnswer: null, answerDraft: '' }),
     })
-    interviewSseRef.current = { abort: () => connection.close() }
-  }, [serviceType])
+    let finished = false
+    let cancelled = false
+    let ready = false
+    let lastQuestion = ''
+    const fail = (message: string) => {
+      if (finished || cancelled) return
+      finished = true
+      startInFlight.current = false
+      setIsStreaming(false)
+      useInterviewStore.setState({ interviewStatus: 'idle' })
+      setStartError(message)
+    }
+    const connection = ssePost('/interview/mock/start', params, { callbacks: {
+      onMessage: data => {
+        if (cancelled || finished) return
+        if (data.type === 'start') {
+          if (typeof data.resultId === 'string' && typeof data.sessionId === 'string') {
+            useInterviewStore.setState({ resultId: data.resultId, sessionId: data.sessionId })
+            setCurrentResultId(data.resultId)
+            updateQuery({ step: 'interview', resultId: data.resultId })
+            saveActiveInterview(data.sessionId, data.resultId, serviceType)
+          }
+          if (data.startStatus === 'ready') {
+            try {
+              const snapshot = parseRecoveredInterview({ ...data, busyUntil: null, committedRequestId: null })
+              useInterviewStore.setState({ messages: snapshot.conversationHistory.map(message => ({ ...message, timestamp: new Date(message.timestamp) })),
+                interviewerName: snapshot.interviewerName, questionVersion: snapshot.questionVersion,
+                interviewStatus: snapshot.status === 'completed' ? 'ended' : snapshot.status === 'paused' ? 'suspend' : 'in_progress',
+              })
+              lastQuestion = snapshot.conversationHistory.at(-1)?.content || ''
+              ready = true
+            } catch { fail('开场响应不完整，请重试确认') }
+          }
+        } else if (data.type === 'waiting' || data.type === 'end') {
+          if (!ready || data.requestId !== params.requestId) { fail('没有收到完整开场确认'); return }
+          finished = true
+          startInFlight.current = false
+          useInterviewStore.setState({ pendingStart: null, interviewEventType: data.type === 'end' ? 'end' : 'waiting' })
+          setIsStreaming(false)
+          if (data.type === 'end') clearActiveInterview()
+          else if (lastQuestion) speechSynthesis.handleStreamText(lastQuestion, true)
+          refreshUserInfo()
+        } else if (data.type === 'error') {
+          if (data.startStatus === 'cancelled') useInterviewStore.setState({ pendingStart: null })
+          fail(typeof data.error === 'string' ? data.error : '开场尚未确认')
+        }
+      },
+      onError: () => fail('连接中断，本次开始的请求已保留'),
+      onComplete: () => { if (!finished) fail('连接提前结束，开场尚未确认') },
+    } })
+    interviewSseRef.current = { abort: () => { cancelled = true; connection.close(); startInFlight.current = false } }
+  }, [serviceType, speechSynthesis])
+
+  const cancelInterviewStart = async () => {
+    const pending = useInterviewStore.getState().pendingStart
+    if (!pending) return
+    setIsRecovering(true)
+    try {
+      const response: unknown = await request.post(`/interview/mock/start/${pending.requestId}/cancel`, pending)
+      if (!response || typeof response !== 'object' || !('status' in response) || !('resultId' in response) || typeof response.resultId !== 'string') throw new Error('取消结果尚未确认，请重试')
+      if (response.status === 'ready') {
+        setStartError('开场已完成，点击重试开始即可进入，不会再次扣次。')
+        return
+      }
+      if (response.status !== 'cancelled') throw new Error('取消结果尚未确认，请重试')
+      useInterviewStore.getState().resetInterview()
+      useInterviewStore.setState({ resultId: null })
+      clearActiveInterview()
+      router.push('/interview/start')
+    } catch (error: unknown) {
+      setStartError(error instanceof Error ? error.message : '取消未完成，请重试')
+    } finally { setIsRecovering(false) }
+  }
 
   const sendAnswer = useCallback(async (answer: string) => {
     const currentState = useInterviewStore.getState()
@@ -1232,7 +1272,7 @@ export default function InterviewPageContent() {
             ) : (
               <button
                 onClick={endInterview}
-                disabled={isRecovering || (!!resultId && interviewStore.resultId !== resultId)}
+                disabled={!!interviewStore.pendingStart || isRecovering || (!!resultId && interviewStore.resultId !== resultId)}
                 className="inline-flex min-h-11 shrink-0 whitespace-nowrap items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 text-red-500 text-xs font-medium hover:bg-red-50 transition-colors"
               >
                 <Icon name="i-heroicons-stop-circle" className="w-3.5 h-3.5" />
@@ -1242,6 +1282,15 @@ export default function InterviewPageContent() {
           </div>
         </div>
 
+        {startError && <div role="alert" className="mx-4 mt-4 rounded-2xl border border-line bg-paper p-4 sm:mx-6">
+          <p className="text-sm text-ink">{startError}</p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <button type="button" onClick={() => void startInterviewSSE()} disabled={isStreaming || isRecovering}
+              className="min-h-11 rounded-xl bg-primary-600 px-4 text-sm text-white disabled:opacity-50">重试开始</button>
+            {interviewStore.pendingStart && <button type="button" onClick={() => void cancelInterviewStart()} disabled={isStreaming || isRecovering}
+              className="min-h-11 rounded-xl border border-line px-4 text-sm disabled:opacity-50">取消开始</button>}
+          </div>
+        </div>}
         {/* 消息列表 */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {messages.length === 0 && !isStreaming && (

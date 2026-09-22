@@ -254,6 +254,24 @@ export class AIInterviewResult {
   @Prop()
   completedAt?: Date; // 完成时间
 
+  @Prop({ enum: ['prepared', 'ready', 'refunding', 'cancelled'] })
+  startStatus?: 'prepared' | 'ready' | 'refunding' | 'cancelled';
+
+  @Prop()
+  startRequestId?: string;
+
+  @Prop()
+  startPayloadHash?: string;
+
+  @Prop()
+  startLeaseToken?: string;
+
+  @Prop()
+  startLeaseExpiresAt?: Date;
+
+  @Prop({ default: false })
+  startPrepared: boolean;
+
   @Prop({ default: 0 })
   turnVersion: number;
 

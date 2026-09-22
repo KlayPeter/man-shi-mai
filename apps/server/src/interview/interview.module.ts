@@ -1,3 +1,5 @@
+import { InterviewStartService } from './services/interview-start.service';
+import { QuotaLedgerModule } from '../user/quota-ledger.module';
 import { InterviewTurnService } from './services/interview-turn.service';
 import { AudioTranscoderService } from './services/audio-transcoder.service';
 import { BaiduSpeechService } from './services/baidu-speech.service';
@@ -37,6 +39,7 @@ import {
 @Module({
   imports: [
     ConfigModule,
+    QuotaLedgerModule,
     StsModule,
     AIModule, // 导入 AI 模块以使用 AIModelFactory
     MongooseModule.forFeature([
@@ -55,6 +58,7 @@ import {
     InterviewSpeechService,
     InterviewReportService,
     InterviewTurnService,
+    InterviewStartService,
     InterviewService,
     InterviewAIService,
     InterviewAgentService,

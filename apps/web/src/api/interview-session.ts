@@ -4,7 +4,7 @@ export interface RecoveredInterview {
   resultId: string
   sessionId: string
   interviewerName: string
-  status: 'in_progress' | 'completed'
+  status: 'in_progress' | 'paused' | 'completed'
   questionVersion: number
   busyUntil: string | null
   committedRequestId: string | null
@@ -15,7 +15,7 @@ export function parseRecoveredInterview(value: unknown): RecoveredInterview {
   if (!value || typeof value !== 'object') throw new Error('会话响应无效')
   const data = value as Record<string, unknown>
   if (typeof data.resultId !== 'string' || typeof data.sessionId !== 'string' ||
-    typeof data.interviewerName !== 'string' || !['in_progress', 'completed'].includes(String(data.status)) ||
+    typeof data.interviewerName !== 'string' || !['in_progress', 'paused', 'completed'].includes(String(data.status)) ||
     !Number.isInteger(data.questionVersion) || Number(data.questionVersion) < 0 ||
     !(data.busyUntil === null || (typeof data.busyUntil === 'string' && Number.isFinite(Date.parse(data.busyUntil)))) ||
     !(data.committedRequestId === null || typeof data.committedRequestId === 'string') ||
