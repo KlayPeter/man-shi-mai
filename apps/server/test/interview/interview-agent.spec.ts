@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { InterviewAgentService } from '../../src/interview/services/interview-agent.service';
 import { AIModelFactory } from '../../src/ai/services/ai-model.factory';
+import { AIMessage, HumanMessage } from '@langchain/core/messages';
 
 // Mock @langchain/langgraph using a self-contained factory function to avoid Jest hoisting ReferenceErrors
 jest.mock('@langchain/langgraph', () => {
@@ -82,6 +83,30 @@ describe('InterviewAgentService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  it('judges the answer against its own preceding question, excluding later messages', async () => {
+    const invoke = jest.fn().mockResolvedValue({ isQuestionAnswered: false });
+    mockAIModelFactory.createDefaultModel.mockReturnValue({
+      pipe: () => ({ invoke }),
+    });
+    await service['evaluatePhaseTransition']({
+      currentPhase: 'tech_assessment',
+      jd: 'React',
+      resumeContent: '合成简历',
+      messages: [
+        new AIMessage('旧问题'),
+        new HumanMessage('旧回答'),
+        new AIMessage('如何计算虚拟列表的渲染范围？'),
+        new HumanMessage('我和产品一起按清单验收。'),
+        new AIMessage('后续问题，不应参与上一轮判定'),
+      ],
+    });
+    const prompt: string = invoke.mock.calls[0][0];
+    expect(prompt).toContain('本轮面试官提问: 如何计算虚拟列表的渲染范围？');
+    expect(prompt).toContain('我和产品一起按清单验收。');
+    expect(prompt).not.toContain('旧问题');
+    expect(prompt).not.toContain('后续问题');
   });
 
   describe('generateInterviewQuestionStream', () => {

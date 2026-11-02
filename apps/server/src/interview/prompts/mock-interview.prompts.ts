@@ -182,6 +182,8 @@ export function buildAssessmentPrompt(_context: {
 
 评价标准版本：interview-evidence-v1。
 评分针对回答的切题性、事实与推理、具体行动和结果、表达结构。每项仅在回答中有充分依据时评分，0-100；未观察的维度不放入 radarData。总分无法可靠判断时 overallScore 为 null、overallLevel 为“信息不足”。
+评价对象是本次回答的表现，不是核验履历真实性。原理或方案题可依据方案正确性与推理评分，不因缺少线上数据、截图或未被提问的细节就拒绝评分。明确跑题或错误方案也属于可观察表现，可给出低分，但不能推断候选人没有能力。
+已有可评分维度时，overallScore 综合这些已观察维度，overallLevel 描述本次表现；只有回答无法提供可判断内容时才使用 null 和“信息不足”，不把未观察维度按零分计入总分。
 回答短不等于差，没有提及不等于不会；参考答案可能不完整，不要求照背。只能分析文本表达，不评估实际语速、音色或紧张程度；fluencyScore 必须为 null。
 每项主要反馈必须在 evidence 中提供问题序号和来自该问题回答的连续原文 quote；不得引用简历或参考答案充当回答证据。指出缺口时说明“本次回答未说明”，不能断言没有能力。
 evidence.kind 为 strength 或 improvement，feedback 解释该引用支持什么判断，practice 提供下一次可执行的练习。每项 quote 必须逐字存在，至少一条；不强凑优缺点数量。

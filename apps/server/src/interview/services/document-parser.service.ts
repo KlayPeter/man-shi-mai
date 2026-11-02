@@ -173,7 +173,8 @@ export class DocumentParserService {
     try {
       this.logger.log('开始解析 PDF 文件');
 
-      const data = await pdf.default(buffer);
+      // pdf.js 会对输入调用 slice；Buffer.slice 共享内存会破坏小文件的交叉引用解析。
+      const data = await pdf.default(new Uint8Array(buffer));
 
       if (!data.text || data.text.trim().length === 0) {
         throw new BadRequestException(

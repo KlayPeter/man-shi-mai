@@ -1,3 +1,7 @@
+import axios from 'axios';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { StsService } from '../../src/sts/sts.service';
 import { InterviewStartService } from '../../src/interview/services/interview-start.service';
 import { QuotaLedgerService } from '../../src/user/quota-ledger.service';
 import { InterviewTurnService } from '../../src/interview/services/interview-turn.service';
@@ -17,6 +21,8 @@ import { InterviewAIService } from '../../src/interview/services/interview-ai.se
 import { InterviewAgentService } from '../../src/interview/services/interview-agent.service';
 import { MockInterviewType } from '../../src/interview/dto/mock-interview.dto';
 
+jest.mock('axios');
+
 const userId = '507f1f77bcf86cd799439011';
 
 // 本组测试验证计费和会话边界，不加载或调用真实模型图。
@@ -34,11 +40,21 @@ describe('interview reliability', () => {
   };
   const consumption = { findOne: jest.fn(), create: jest.fn() };
   const quiz = { findOne: jest.fn() };
+  const resumes = { findById: jest.fn() };
+  const storage = new StsService(
+    new ConfigService({
+      OSS_BUCKET: 'test-bucket',
+      OSS_REGION: 'oss-cn-beijing',
+    }),
+  );
+  const parser = new DocumentParserService(storage);
   const starts = { start: jest.fn() };
   const quota = { apply: jest.fn() };
   const transactions = { updateOne: jest.fn(), exists: jest.fn() };
   const continuation = { continue: jest.fn() };
   const quizService = { start: jest.fn() };
+
+  afterEach(() => jest.restoreAllMocks());
 
   beforeEach(async () => {
     jest.resetAllMocks();
@@ -54,15 +70,16 @@ describe('interview reliability', () => {
           InterviewReportService,
           InterviewTurnService,
           ResumeAnalysisService,
-          DocumentParserService,
           InterviewAIService,
           InterviewAgentService,
         ].map((provide) => ({ provide, useValue: {} })),
+        { provide: DocumentParserService, useValue: parser },
+        { provide: getModelToken('Resume'), useValue: resumes },
         { provide: ConversationContinuationService, useValue: continuation },
         { provide: getModelToken('User'), useValue: user },
         { provide: getModelToken('ConsumptionRecord'), useValue: consumption },
         { provide: getModelToken('ResumeQuizResult'), useValue: quiz },
-        ...['Resume', 'AIInterviewResult'].map((name) => ({
+        ...['AIInterviewResult'].map((name) => ({
           provide: getModelToken(name),
           useValue: {},
         })),
@@ -71,6 +88,68 @@ describe('interview reliability', () => {
     }).compile();
     service = module.get(InterviewService);
     sessions = module.get(SessionManager);
+  });
+
+  it.each(['pdf', 'docx'])(
+    'resolves a saved %s resume into the interview opening',
+    async (extension) => {
+      const url = `https://test-bucket.oss-cn-beijing.aliyuncs.com/user-resumes/${userId}/resume.${extension}`;
+      resumes.findById.mockResolvedValue({ userId, url });
+      jest
+        .spyOn(storage, 'getResumeReadUrl')
+        .mockResolvedValue('https://signed.example.test/file');
+      jest.mocked(axios.get).mockResolvedValue({
+        data: readFileSync(join(__dirname, 'fixtures', `resume.${extension}`)),
+      });
+      service.startMockInterviewWithStream(userId, {
+        requestId: '4f387521-e4c9-46da-ab7f-da395e70254f',
+        interviewType: MockInterviewType.SPECIAL,
+        positionName: '前端',
+        resumeId: '507f1f77bcf86cd799439012',
+      });
+      const resolveResume: () => Promise<string> =
+        starts.start.mock.calls[0][2];
+      const text = await resolveResume();
+      expect(text).toContain('Frontend engineer');
+      expect(text).toContain('1.8 seconds to 0.9 seconds');
+      expect(storage.getResumeReadUrl).toHaveBeenCalledWith(url, userId);
+    },
+  );
+
+  it('uses the editor snapshot without downloading a file', async () => {
+    resumes.findById.mockResolvedValue({
+      userId,
+      plainTextSnapshot: '编辑器保存的合成简历',
+      url: 'unused',
+    });
+    expect(
+      await service['extractResumeContent'](userId, { resumeId: 'saved' }),
+    ).toBe('编辑器保存的合成简历');
+    expect(axios.get).not.toHaveBeenCalled();
+  });
+
+  it('rejects another user resume before parsing', async () => {
+    resumes.findById.mockResolvedValue({
+      userId: 'another-user',
+      url: 'private',
+    });
+    await expect(
+      service['extractResumeContent'](userId, { resumeId: 'saved' }),
+    ).rejects.toThrow('无权访问');
+    expect(axios.get).not.toHaveBeenCalled();
+  });
+
+  it('rejects file parsing when storage is unconfigured, without a download', async () => {
+    const unconfigured = new DocumentParserService(
+      new StsService(new ConfigService({})),
+    );
+    await expect(
+      unconfigured.parseDocumentFromUrl(
+        'https://example.test/resume.pdf',
+        userId,
+      ),
+    ).rejects.toThrow('尚未配置');
+    expect(axios.get).not.toHaveBeenCalled();
   });
 
   it('delegates resume quiz to the durable quiz service without direct debit', async () => {

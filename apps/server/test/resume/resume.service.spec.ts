@@ -1,3 +1,4 @@
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
 import { ResumeService } from '../../src/resume/resume.service';
@@ -26,7 +27,15 @@ describe('ResumeService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ResumeService,
-        { provide: StsService, useValue: { assertOwnedResumeUrl: jest.fn() } },
+        {
+          provide: StsService,
+          useValue: new StsService(
+            new ConfigService({
+              OSS_BUCKET: 'test-bucket',
+              OSS_REGION: 'oss-cn-beijing',
+            }),
+          ),
+        },
         {
           provide: getModelToken(Resume.name),
           useValue: MockResumeModel,
@@ -41,6 +50,31 @@ describe('ResumeService', () => {
   it('should be defined', () => {
     expect(service).toBeDefined();
   });
+
+  it('saves only the authenticated owner and an unsigned HTTPS file URL', async () => {
+    const userId = '507f1f77bcf86cd799439011';
+    const path = `test-bucket.oss-cn-beijing.aliyuncs.com/user-resumes/${userId}/resume.pdf`;
+    const saved = await service.uploadResume(userId, {
+      url: `http://${path}?secret=temporary#fragment`,
+      resumeName: '合成简历',
+      uploadTime: '2026-11-02T00:00:00.000Z',
+    });
+    expect(saved.userId).toBe(userId);
+    expect(saved.url).toBe(`https://${path}`);
+  });
+
+  it.each(['another-user/resume.pdf', '507f1f77bcf86cd799439011/resume.doc'])(
+    'rejects cross-user files and unsupported extensions before saving',
+    async (path) => {
+      await expect(
+        service.uploadResume('507f1f77bcf86cd799439011', {
+          url: `https://test-bucket.oss-cn-beijing.aliyuncs.com/user-resumes/${path}`,
+          resumeName: '合成简历',
+          uploadTime: '2026-11-02T00:00:00.000Z',
+        }),
+      ).rejects.toThrow();
+    },
+  );
 
   describe('getInterviewResumeList', () => {
     it('should query resumes by userId and sort them', async () => {
