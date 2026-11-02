@@ -8,6 +8,25 @@ import { DocumentParserService } from '../../src/interview/services/document-par
 jest.mock('axios');
 
 describe('document download boundaries', () => {
+  it('enforces the smaller upload limit before parsing downloaded content', async () => {
+    jest
+      .spyOn(storage, 'getResumeReadUrl')
+      .mockResolvedValue('https://signed.example.test/resume');
+    jest
+      .mocked(axios.get)
+      .mockResolvedValue({ data: Buffer.alloc(5 * 1024 * 1024 + 1) });
+    await expect(
+      parser.parseDocumentFromUrl(
+        'https://test-bucket.oss-cn-beijing.aliyuncs.com/resume.pdf',
+        userId,
+        5 * 1024 * 1024,
+      ),
+    ).rejects.toThrow('最大支持 5MB');
+    expect(axios.get).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ maxContentLength: 5 * 1024 * 1024 }),
+    );
+  });
   const storage = new StsService(
     new ConfigService({
       OSS_BUCKET: 'test-bucket',

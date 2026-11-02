@@ -15,7 +15,7 @@ export async function uploadResumeFile(file: File, token: string, userId: string
     if (!extension || !['pdf', 'docx'].includes(extension)) throw new Error('仅支持 PDF 或 DOCX 简历')
     const client = await getOSSClient(token)
     const uploaded = await client.put(`user-resumes/${userId}/${crypto.randomUUID()}.${extension}`, file)
-    result = await request.post('/resume/uploadResume', { url: uploaded.url, resumeName: file.name, uploadTime: new Date().toISOString() })
+    result = await request.post('/resume/uploadResume', { url: uploaded.url, resumeName: file.name, uploadTime: new Date().toISOString() }, { timeout: 60000 })
   } else throw new Error('上传配置无效，请稍后重试')
   if (!result || typeof result !== 'object' || !('_id' in result) || typeof result._id !== 'string' || !result._id) throw new Error('上传结果缺少简历编号，请刷新列表确认')
   return { _id: result._id }

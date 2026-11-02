@@ -9,6 +9,12 @@ import { StsService } from '../../src/sts/sts.service';
 describe('ResumeService', () => {
   let service: ResumeService;
   let model: any;
+  let parser: jest.Mocked<
+    Pick<
+      DocumentParserService,
+      'parseDocumentFromUrl' | 'cleanText' | 'validateResumeContent'
+    >
+  >;
 
   class MockResumeModel {
     constructor(private data: any) {
@@ -25,11 +31,16 @@ describe('ResumeService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    parser = {
+      parseDocumentFromUrl: jest.fn().mockResolvedValue('合成简历正文'),
+      cleanText: jest.fn().mockReturnValue('清理后的合成简历正文'),
+      validateResumeContent: jest.fn().mockReturnValue({ isValid: true }),
+    };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ResumeService,
         { provide: ConfigService, useValue: new ConfigService({}) },
-        { provide: DocumentParserService, useValue: {} },
+        { provide: DocumentParserService, useValue: parser },
         {
           provide: StsService,
           useValue: new StsService(
@@ -64,6 +75,33 @@ describe('ResumeService', () => {
     });
     expect(saved.userId).toBe(userId);
     expect(saved.url).toBe(`https://${path}`);
+    expect(parser.parseDocumentFromUrl).toHaveBeenCalledWith(
+      `https://${path}`,
+      userId,
+      5 * 1024 * 1024,
+    );
+    expect(saved.plainTextSnapshot).toBe('清理后的合成简历正文');
+    expect(saved.status).toBe('ready');
+    expect(saved.sourceType).toBe('upload');
+  });
+
+  it('rejects unreadable or invalid OSS documents instead of saving an empty resume', async () => {
+    const userId = '507f1f77bcf86cd799439011';
+    const dto = {
+      url: `https://test-bucket.oss-cn-beijing.aliyuncs.com/user-resumes/${userId}/resume.pdf`,
+      resumeName: '合成简历',
+      uploadTime: '2026-11-02T00:00:00.000Z',
+    };
+    parser.parseDocumentFromUrl.mockRejectedValueOnce(new Error('文件不存在'));
+    await expect(service.uploadResume(userId, dto)).rejects.toThrow(
+      '文件不存在',
+    );
+    expect(parser.cleanText).not.toHaveBeenCalled();
+    parser.validateResumeContent.mockReturnValueOnce({
+      isValid: false,
+      reason: '正文过短',
+    });
+    await expect(service.uploadResume(userId, dto)).rejects.toThrow('正文过短');
   });
 
   it.each(['another-user/resume.pdf', '507f1f77bcf86cd799439011/resume.doc'])(

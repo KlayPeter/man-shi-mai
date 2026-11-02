@@ -131,11 +131,25 @@ export class ResumeService {
     if (!/\.(pdf|docx)$/i.test(key)) {
       throw new BadRequestException('仅支持 PDF 或 DOCX 简历');
     }
+    // shortcut: 上传后登记失败会留下云端孤立文件，正式运营前补充定期回收。
+    const text = this.parser.cleanText(
+      await this.parser.parseDocumentFromUrl(
+        url.href,
+        userId,
+        this.uploadConfig().maxFileSize,
+      ),
+    );
+    const validation = this.parser.validateResumeContent(text);
+    if (!validation.isValid) throw new BadRequestException(validation.reason);
     const resume = new this.resumeModel({
       userId,
       resumeName: dto.resumeName,
+      originalFileName: dto.resumeName,
       url: url.href,
       uploadTime: new Date(dto.uploadTime),
+      sourceType: 'upload',
+      plainTextSnapshot: text,
+      status: 'ready',
     });
     return await resume.save();
   }

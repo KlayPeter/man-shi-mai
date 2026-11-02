@@ -28,7 +28,11 @@ export class DocumentParserService {
    * @param url 文件 URL（阿里云 OSS 等）
    * @returns 解析后的文本内容
    */
-  async parseDocumentFromUrl(url: string, userId: string): Promise<string> {
+  async parseDocumentFromUrl(
+    url: string,
+    userId: string,
+    maxFileSize = this.MAX_FILE_SIZE,
+  ): Promise<string> {
     try {
       this.logger.log('开始解析用户简历文档');
 
@@ -37,7 +41,10 @@ export class DocumentParserService {
 
       // 2. 下载文件
       const signedUrl = await this.storage.getResumeReadUrl(url, userId);
-      const buffer = await this.downloadFile(signedUrl);
+      const buffer = await this.downloadFile(
+        signedUrl,
+        Math.min(maxFileSize, this.MAX_FILE_SIZE),
+      );
 
       const text = await this.parseDocument(buffer, url);
 
@@ -114,7 +121,10 @@ export class DocumentParserService {
   /**
    * 下载文件
    */
-  private async downloadFile(url: string): Promise<Buffer> {
+  private async downloadFile(
+    url: string,
+    maxFileSize: number,
+  ): Promise<Buffer> {
     try {
       this.logger.log('开始下载已授权的简历文件');
 
@@ -123,8 +133,8 @@ export class DocumentParserService {
         timeout: 30000, // 30秒超时
         maxRedirects: 0,
         proxy: false,
-        maxContentLength: this.MAX_FILE_SIZE,
-        maxBodyLength: this.MAX_FILE_SIZE,
+        maxContentLength: maxFileSize,
+        maxBodyLength: maxFileSize,
         headers: {
           'User-Agent': 'Mozilla/5.0 (compatible; ResumeParser/1.0)',
         },
@@ -133,9 +143,9 @@ export class DocumentParserService {
       const buffer = Buffer.from(response.data);
 
       // 验证文件大小
-      if (buffer.length > this.MAX_FILE_SIZE) {
+      if (buffer.length > maxFileSize) {
         throw new BadRequestException(
-          `文件过大（${(buffer.length / 1024 / 1024).toFixed(2)}MB），最大支持 10MB`,
+          `文件过大（${(buffer.length / 1024 / 1024).toFixed(2)}MB），最大支持 ${maxFileSize / 1024 / 1024}MB`,
         );
       }
 

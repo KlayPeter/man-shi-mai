@@ -7,6 +7,17 @@ import { uploadResumeFile } from '@/api/resume-upload'
 const file = new File(['synthetic'], 'resume.pdf', { type: 'application/pdf' })
 beforeEach(() => vi.resetAllMocks())
 describe('resume upload routing', () => {
+  it('registers an OSS upload with enough time for signed download and parsing, and surfaces parse failures', async () => {
+    vi.mocked(request.get).mockResolvedValue({ provider: 'oss' })
+    const put = vi.fn().mockResolvedValue({ url: 'https://storage.example.test/resume.pdf' })
+    vi.mocked(getOSSClient).mockResolvedValue({ put } as Awaited<ReturnType<typeof getOSSClient>>)
+    vi.mocked(request.post).mockResolvedValue({ _id: 'saved' })
+    expect(await uploadResumeFile(file, 'synthetic-token', 'owner')).toEqual({ _id: 'saved' })
+    expect(put).toHaveBeenCalledWith(expect.stringMatching(/^user-resumes\/owner\/.+\.pdf$/), file)
+    expect(request.post).toHaveBeenCalledWith('/resume/uploadResume', expect.objectContaining({ url: 'https://storage.example.test/resume.pdf' }), { timeout: 60000 })
+    vi.mocked(request.post).mockRejectedValue(new Error('文件解析失败'))
+    await expect(uploadResumeFile(file, 'synthetic-token', 'owner')).rejects.toThrow('文件解析失败')
+  })
   it('sends multipart content through the proxy without requesting OSS credentials in local mode', async () => {
     vi.mocked(request.get).mockResolvedValue({ provider: 'local' })
     vi.mocked(request.post).mockResolvedValue({ _id: 'saved' })

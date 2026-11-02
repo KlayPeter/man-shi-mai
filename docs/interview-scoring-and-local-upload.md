@@ -53,13 +53,30 @@ flowchart LR
     Preview --> Interview[面试按 resumeId 读取本人快照]
 ```
 
-默认 `RESUME_STORAGE_DRIVER=local`，使用现有依赖，没有增加上传 SDK。`GET /resume/upload-config` 返回所选方式；`POST /resume/upload-file` 接收名为 `file` 的单文件表单。旧 OSS 元数据接口继续保留。
+默认 `RESUME_STORAGE_DRIVER=local`，使用现有依赖，没有增加上传 SDK。`GET /resume/upload-config` 返回所选方式；`POST /resume/upload-file` 接收名为 `file` 的单文件表单。原 OSS 登记接口继续保留，现会先解析、校验正文，再保存快照。
 
 `RESUME_LOCAL_DIR` 可设为绝对目录；不设置时使用后端工作目录下的 `data/resumes`。根开发命令对应 `apps/server/data/resumes`。目录和文件分别以 0700／0600 创建，文件名使用随机 ID 并按用户隔离，没有静态文件公开路由。数据库保存失败会清理新文件。删除本地简历会清理原文件，已有面试使用的文本快照仍保留；Mongo 与文件系统不共享事务，删除后的文件清理失败会告警，当前没有后台孤立文件回收器。
 
-后续设置 `RESUME_STORAGE_DRIVER=oss` 并填写 `.env.example` 所列 OSS／STS 配置，重启后端即可使用原有云端上传路径。本地历史快照继续可用；原文件不自动迁移。文件和数据库需一起保留。扫描件、加密或损坏文件会拒绝或解析失败，当前没有 OCR。
+设置 `RESUME_STORAGE_DRIVER=oss` 并填写 `.env.example` 所列 OSS／STS 配置，重启后端即可使用云端上传路径。浏览器通过临时凭证上传；后端登记时验证用户目录，以短期签名读取并解析文件，按 5MB 上限校验后保存文字快照及 ready 状态。签名 URL 不写入数据库，文件不可读或正文无效时明确报错，不登记空白简历。即使 Bucket 开启阻止公共访问，已授权 STS 和签名读取仍可工作。本地历史快照继续可用；原文件不自动迁移。文件和数据库需一起保留。扫描件、加密或损坏文件会拒绝或解析失败，当前没有 OCR。
+
+OSS 上传后登记失败或删除元数据时，云端文件当前不会自动清理；正式运营前需补充孤立文件回收。开启原素材 Bucket 的阻止公共访问也会影响匿名图片直链，简历链路验收不代表所有旧素材已适配。
 
 ## 验收与复现
+
+2026-11-02 另行完成 OSS 真实验收：复用原 Bucket，匿名文件读取返回 403；JWT／STS、PDF／DOCX 上传、签名读取和真实解析、文字快照、用户归属拒绝、坏文件拒绝，以及 Next 代理后的浏览器直传／CORS、390px 显示均通过。只用合成样例，云端测试文件与专用测试数据库已清理；没有模型或支付调用，没有部署生产环境。该结果不代表此前仅测本地上传的轮次也验收了 OSS。
+
+复测入口 `apps/server/test/integration/resume-oss.cjs` 需先构建后端、启动专用 MongoDB 的 27028 端口，并在 `apps/server/.env.development` 配好 OSS／STS。脚本只读取其中的 OSS 配置，不使用开发数据库；会写入随机测试用户目录并在结束时清理。运行命令如下：
+
+```bash
+cd apps/server
+NODE_ENV=test RUN_OSS_INTEGRATION=1 \
+  MONGODB_URI=mongodb://127.0.0.1:27028/msm_oss_acceptance \
+  JWT_SECRET=synthetic-oss-acceptance-secret-only \
+  DEEPSEEK_API_KEY=synthetic-not-called PAYMENT_MODE=disabled \
+  node test/integration/resume-oss.cjs
+```
+
+可选设置 `TEST_WEB_BASE=http://localhost:8011`，使用已启动且 `BACKEND_API_URL=http://127.0.0.1:3017` 的测试前端，追加浏览器上传验收。复测需要真实 OSS 读写及清理权限，会产生少量云端请求。
 
 - 自动测试覆盖汇总公式、优秀等级、缺失维度、非计分题、引用和覆盖校验，以及本地真实 PDF／DOCX、文件权限、坏文件、保存失败清理与磁盘错误。
 - `test/integration/resume-local.cjs` 使用专用 `127.0.0.1:27028/msm_resume_acceptance`，验证真实注册／JWT、文件上传、越权、超限、面试快照、报告持久化及删除。模型明确 Stub，不能据此判断模型质量。

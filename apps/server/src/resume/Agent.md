@@ -14,7 +14,11 @@ graph TD
     ExtractUserId --> Parse[DocumentParserService 解析 PDF 或 DOCX]
     Parse --> File[保存私有本地文件]
     File --> CreateRecord[保存 Resume 与文本快照]
-    Action -- OSS登记 --> CreateRecord
+    Action -- OSS登记 --> OwnedURL[校验本人 Bucket 和目录]
+    OwnedURL --> SignedRead[签名读取并解析 PDF 或 DOCX]
+    SignedRead --> ValidText{5MB 内且正文有效?}
+    ValidText -- 是 --> CreateRecord
+    ValidText -- 否 --> Reject[返回失败 不登记简历]
     CreateRecord --> SaveDB[写入 MongoDB]
     
     Action -- Delete/Rename --> FetchRecord[联合查询 id + userId]
@@ -39,7 +43,7 @@ graph TD
   - 核心逻辑：操作 MongoDB `resumeModel` 进行增删改查。当删除或修改不存在的简历时，抛出 NestJS 自带的 `NotFoundException` (404 状态码)。
 - **控制流向 / Data Flow**:
   1. 前端通过 `upload-config` 选择上传方式。
-  2. local 模式直接发送 multipart 到 `upload-file`，后端解析、写入私有文件及快照；oss 模式先上传文件，再向 `uploadResume` 登记 `{ resumeName, url, uploadTime }`。
+  2. local 模式直接发送 multipart 到 `upload-file`，后端解析、写入私有文件及快照；oss 模式先上传文件，再向 `uploadResume` 登记 `{ resumeName, url, uploadTime }`。后端验证 URL 归属，使用 STS 签名读取并按 5MB 限制解析，校验正文后才保存 `plainTextSnapshot`、`sourceType=upload`、`status=ready`；读取或解析失败不会登记空白简历。
   3. `ResumeController` 拦截并校验，提取 Token 中的 `userId`。
   4. `ResumeService` 创建简历数据模型记录并保存落库。
   5. 进行简历列表查询时，按 `createdAt` 降序返回给前端。
