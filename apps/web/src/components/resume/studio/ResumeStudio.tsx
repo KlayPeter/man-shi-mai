@@ -7,6 +7,7 @@ import Icon from '@/components/ui/Icon';
 import BasicInfoForm from './forms/BasicInfoForm';
 import WorkExperienceForm from './forms/WorkExperienceForm';
 import EducationForm from './forms/EducationForm';
+import UploadedResumePreview from './UploadedResumePreview';
 
 interface Props {
   id: string;
@@ -28,7 +29,11 @@ export default function ResumeStudio({ id }: Props) {
     store.fetchResumeDetail(id);
   }, [id]);
 
-  if (store.isLoading || !store.currentResume) {
+  if (store.loadError) {
+    return <div role="alert" className="page-container workspace-page mx-auto max-w-xl py-16 text-center"><h1 className="text-xl font-semibold text-ink">无法打开这份简历</h1><p className="mt-4 text-sm leading-7 text-muted">{store.loadError}</p><div className="mt-6 flex justify-center gap-3"><button type="button" onClick={() => store.fetchResumeDetail(id)} className="button-primary">重新加载</button><button type="button" onClick={() => router.push('/resume')} className="button-secondary">返回我的简历</button></div></div>;
+  }
+
+  if (store.isLoading || !store.currentResume || store.currentResume._id !== id) {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-50">
         <Icon name="i-heroicons-arrow-path" className="w-8 h-8 text-primary-500 animate-spin" />
@@ -39,12 +44,7 @@ export default function ResumeStudio({ id }: Props) {
   const { activeSection, currentResume, isSaving } = store;
 
   if (currentResume.sourceType === 'upload') {
-    return <div className="page-container workspace-page max-w-4xl">
-      <button type="button" onClick={() => router.push('/resume')} className="min-h-11 text-sm text-primary-700">← 返回我的简历</button>
-      <header className="my-6 flex flex-wrap items-center justify-between gap-4"><div><h1 className="workspace-heading break-all">{currentResume.resumeName}</h1><p className="mt-2 text-sm text-muted">检查提取的文字，这些内容将用于面试提问。</p></div><button type="button" onClick={() => router.push(`/interview/start?resumeId=${encodeURIComponent(id)}`)} className="min-h-11 rounded-full bg-primary-600 px-6 text-sm font-medium text-white">用这份简历练习</button></header>
-      <section aria-label="简历提取内容" className="surface-panel p-5 sm:p-8"><p className="whitespace-pre-wrap break-words text-sm leading-8">{currentResume.plainTextSnapshot || '这份历史文件尚无文本快照，发起面试时会尝试解析。若解析失败，请重新上传文本型 PDF 或 DOCX。'}</p></section>
-      <p className="mt-5 text-xs text-muted">上传文件保留原始内容。需要在线编排简历，可在简历中心新建在线简历。</p>
-    </div>;
+    return <UploadedResumePreview key={id} resume={currentResume} />;
   }
 
   return (

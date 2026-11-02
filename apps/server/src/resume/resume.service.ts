@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
-import { mkdir, writeFile, unlink } from 'node:fs/promises';
+import { mkdir, writeFile, unlink, readFile, stat } from 'node:fs/promises';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { DocumentParserService } from '../interview/services/document-parser.service';
 import { InjectModel } from '@nestjs/mongoose';
@@ -194,6 +194,60 @@ export class ResumeService {
       throw new NotFoundException('简历不存在');
     }
     return resume;
+  }
+
+  async getOriginalFile(userId: string, resumeId: string) {
+    if (!/^[a-f0-9]{24}$/i.test(resumeId))
+      throw new BadRequestException('无效的简历编号');
+    const resume = await this.getResumeDetail(userId, resumeId);
+    if (!resume.localFileKey && !resume.url)
+      throw new BadRequestException('这份在线简历没有上传原文件');
+    const key =
+      resume.localFileKey ||
+      this.storage.assertOwnedResumeUrl(resume.url!, userId);
+    const extension = extname(key).toLowerCase();
+    if (!['.pdf', '.docx'].includes(extension))
+      throw new BadRequestException('仅支持 PDF 或 DOCX 简历');
+    const limit = this.uploadConfig().maxFileSize;
+    let buffer: Buffer;
+    if (resume.localFileKey) {
+      try {
+        const path = this.localPath(userId, resume.localFileKey);
+        if ((await stat(path)).size > limit)
+          throw new BadRequestException('文件大小不能超过 5MB');
+        buffer = await readFile(path);
+      } catch (error: unknown) {
+        if (error instanceof BadRequestException) throw error;
+        if (
+          error &&
+          typeof error === 'object' &&
+          'code' in error &&
+          error.code === 'ENOENT'
+        )
+          throw new NotFoundException('原文件已不存在，请重新上传');
+        throw new ServiceUnavailableException('原文件暂时无法读取，请稍后重试');
+      }
+    } else {
+      buffer = await this.parser.downloadDocumentFromUrl(
+        resume.url!,
+        userId,
+        limit,
+      );
+    }
+    if (!buffer.length || buffer.length > limit)
+      throw new BadRequestException('原文件为空或超过 5MB');
+    const name = basename(resume.originalFileName || resume.resumeName).replace(
+      /[\r\n\0]/g,
+      '',
+    );
+    return {
+      buffer,
+      fileName: extname(name) ? name : name + extension,
+      contentType:
+        extension === '.pdf'
+          ? 'application/pdf'
+          : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    };
   }
 
   async createEmptyResume(userId: string, dto: CreateEmptyResumeDto) {

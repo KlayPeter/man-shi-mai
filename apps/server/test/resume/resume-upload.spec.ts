@@ -30,6 +30,7 @@ describe('local resume uploads', () => {
       return save(this);
     }
     static findOneAndDelete = findOneAndDelete;
+    static findOne = jest.fn();
   }
   beforeEach(async () => {
     jest.resetAllMocks();
@@ -84,6 +85,21 @@ describe('local resume uploads', () => {
       expect(await readdir(join(directory, userId))).toEqual([]);
     },
   );
+  it('reads the local original and gives an actionable error after its removal', async () => {
+    const buffer = await fixture('pdf');
+    const saved = await service.uploadLocalResume(userId, {
+      originalname: '中文简历.pdf',
+      buffer,
+    });
+    ResumeModel.findOne.mockReturnValue({ lean: async () => saved });
+    expect((await service.getOriginalFile(userId, userId)).buffer).toEqual(
+      buffer,
+    );
+    await rm(join(directory, saved.localFileKey!));
+    await expect(service.getOriginalFile(userId, userId)).rejects.toThrow(
+      '原文件已不存在',
+    );
+  });
   it('cleans up a newly written file if database saving fails', async () => {
     save.mockRejectedValue(new Error('database unavailable'));
     await expect(

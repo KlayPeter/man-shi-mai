@@ -12,7 +12,10 @@ describe('ResumeService', () => {
   let parser: jest.Mocked<
     Pick<
       DocumentParserService,
-      'parseDocumentFromUrl' | 'cleanText' | 'validateResumeContent'
+      | 'parseDocumentFromUrl'
+      | 'downloadDocumentFromUrl'
+      | 'cleanText'
+      | 'validateResumeContent'
     >
   >;
 
@@ -33,6 +36,9 @@ describe('ResumeService', () => {
     jest.clearAllMocks();
     parser = {
       parseDocumentFromUrl: jest.fn().mockResolvedValue('合成简历正文'),
+      downloadDocumentFromUrl: jest
+        .fn()
+        .mockResolvedValue(Buffer.from('%PDF-synthetic')),
       cleanText: jest.fn().mockReturnValue('清理后的合成简历正文'),
       validateResumeContent: jest.fn().mockReturnValue({ isValid: true }),
     };
@@ -116,6 +122,54 @@ describe('ResumeService', () => {
       ).rejects.toThrow();
     },
   );
+
+  describe('original resume file', () => {
+    const owner = '507f1f77bcf86cd799439011';
+    const id = '507f1f77bcf86cd799439012';
+    const url = `https://test-bucket.oss-cn-beijing.aliyuncs.com/user-resumes/${owner}/resume.pdf`;
+    it('uses the owned record and returns bounded original bytes with a safe filename', async () => {
+      model.lean.mockResolvedValueOnce({ url, resumeName: '../中文简历\r\n' });
+      const file = await service.getOriginalFile(owner, id);
+      expect(model.findOne).toHaveBeenCalledWith({ _id: id, userId: owner });
+      expect(parser.downloadDocumentFromUrl).toHaveBeenCalledWith(
+        url,
+        owner,
+        5 * 1024 * 1024,
+      );
+      expect(file).toEqual({
+        buffer: Buffer.from('%PDF-synthetic'),
+        fileName: '中文简历.pdf',
+        contentType: 'application/pdf',
+      });
+    });
+    it('rejects missing, invalid and foreign records before downloading', async () => {
+      await expect(service.getOriginalFile(owner, 'invalid')).rejects.toThrow(
+        '无效',
+      );
+      model.lean.mockResolvedValueOnce(null);
+      await expect(service.getOriginalFile(owner, id)).rejects.toThrow(
+        '不存在',
+      );
+      model.lean.mockResolvedValueOnce({
+        url: url.replace(owner, id),
+        resumeName: 'foreign.pdf',
+      });
+      await expect(service.getOriginalFile(owner, id)).rejects.toThrow();
+      expect(parser.downloadDocumentFromUrl).not.toHaveBeenCalled();
+    });
+    it('does not disguise an oversized or empty source as a usable preview', async () => {
+      for (const buffer of [
+        Buffer.alloc(0),
+        Buffer.alloc(5 * 1024 * 1024 + 1),
+      ]) {
+        model.lean.mockResolvedValueOnce({ url, resumeName: 'resume.pdf' });
+        parser.downloadDocumentFromUrl.mockResolvedValueOnce(buffer);
+        await expect(service.getOriginalFile(owner, id)).rejects.toThrow(
+          '原文件为空或超过',
+        );
+      }
+    });
+  });
 
   describe('getInterviewResumeList', () => {
     it('should query resumes by userId and sort them', async () => {

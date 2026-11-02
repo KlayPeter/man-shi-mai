@@ -72,6 +72,17 @@ describe('runtime backend proxy', () => {
     expect(options.headers.get('authorization')).toBe('Bearer synthetic')
   })
 
+  it('preserves private original PDF bytes and download disposition', async () => {
+    const bytes = new Uint8Array([37, 80, 68, 70, 45, 0, 255]);
+    const disposition = "inline; filename*=UTF-8''resume.pdf";
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(bytes, { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': disposition } })));
+    const response = await GET(new Request('http://localhost/dev-api/resume/file/synthetic', { headers: { Authorization: 'Bearer synthetic' } }));
+    expect(response.headers.get('content-type')).toBe('application/pdf');
+    expect(response.headers.get('content-disposition')).toBe(disposition);
+    expect(response.headers.get('cache-control')).toContain('no-store');
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+  });
+
   it('returns a recoverable gateway error without exposing backend details', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('private backend detail')))
     const response = await GET(new Request('http://localhost/dev-api/user/info'))

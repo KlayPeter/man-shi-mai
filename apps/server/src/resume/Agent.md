@@ -64,3 +64,20 @@ graph TD
   - 如果返回 `404 简历不存在`：检查是否由于传入 of `resumeId` 与该 Token 解析出的 `userId` 不匹配（越权或ID有误）。
 
 - 重命名/删除 DTO 校验 MongoDB ID，重命名去除首尾空白并拒绝空名称；编辑内容要求对象结构。所有查询、保存与删除继续限定所属用户。本地文件在删除记录后清理；OSS 仍只删除元数据。文件与 Mongo 不共享事务，清理失败记录告警，当前没有后台回收。配置与验证入口见 [评分与本地上传说明](../../../../docs/interview-scoring-and-local-upload.md)。
+
+
+## 原文件预览
+
+`GET /resume/file/:id` 需要 JWT，先按 `_id + userId` 查询记录，再读取归属文件。local 仅允许当前用户目录内的合法文件键；OSS 复用 `DocumentParserService.downloadDocumentFromUrl` 的 URL、归属、签名和大小校验。返回最大 5MB 的 PDF/DOCX 二进制，附正确 MIME、inline 文件名、`private, no-store` 和 `nosniff`；不返回临时签名 URL。
+
+```mermaid
+flowchart LR
+  A[登录用户请求原文件] --> B[校验编号及记录归属]
+  B --> C{存储方式}
+  C --> D[本地私有文件读取]
+  C --> E[STS 签名并限量读取 OSS]
+  D --> F[二进制响应]
+  E --> F
+```
+
+无效编号返回 400，不存在或非本人记录返回 404；本地文件丢失返回可定位的 404，磁盘故障返回 503。在线编辑简历不提供上传原文件。解析与原文件预览共用下载校验，不能移除大小限制或绕过用户归属校验。

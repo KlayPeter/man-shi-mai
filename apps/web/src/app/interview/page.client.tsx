@@ -85,8 +85,9 @@ export default function InterviewPageContent() {
   const [resumeQuizComplete, setResumeQuizComplete] = useState(false)
   const [company, setCompany] = useState(interviewStore.selectedPosition?.company || '')
   const [positionName, setPositionName] = useState(interviewStore.selectedPosition?.positionName || '')
-  const [minSalary, setMinSalary] = useState(String(interviewStore.selectedPosition?.minSalary || ''))
-  const [maxSalary, setMaxSalary] = useState(String(interviewStore.selectedPosition?.maxSalary || ''))
+  const [minSalary, setMinSalary] = useState(String(interviewStore.selectedPosition?.minSalary ?? ''))
+  const [maxSalary, setMaxSalary] = useState(String(interviewStore.selectedPosition?.maxSalary ?? ''))
+  const [inputErrors, setInputErrors] = useState<{ salary?: string; jd?: string }>({})
   const [jd, setJd] = useState(interviewStore.selectedPosition?.jd || '')
   const sseRef = useRef<{ abort: () => void } | null>(null)
   const resumeQuizInFlight = useRef(false)
@@ -167,6 +168,12 @@ export default function InterviewPageContent() {
     // 手动触发 zustand persist rehydration
     if (typeof window !== 'undefined') {
       useInterviewStore.persist.rehydrate()
+      const savedPosition = useInterviewStore.getState().selectedPosition
+      setCompany(savedPosition.company || '')
+      setPositionName(savedPosition.positionName || '')
+      setMinSalary(String(savedPosition.minSalary ?? ''))
+      setMaxSalary(String(savedPosition.maxSalary ?? ''))
+      setJd(savedPosition.jd || '')
     }
 
     // 刷新用户信息，确保剩余次数是最新的
@@ -292,6 +299,10 @@ export default function InterviewPageContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step])
 
+  useEffect(() => {
+    if (step === 'interview' && messages.length) messagesEndRef.current?.scrollIntoView({ block: 'end' })
+  }, [step, messages.length])
+
   const loadHistory = async (rid: string) => {
     try {
       if (serviceType === 'resume') {
@@ -376,23 +387,15 @@ export default function InterviewPageContent() {
       return
     }
 
-    const currentMinSalary = interviewStore.selectedPosition?.minSalary
-    const currentMaxSalary = interviewStore.selectedPosition?.maxSalary
-    if (!currentMinSalary || !currentMaxSalary) {
-      toast({ title: '请填写薪资范围', description: '以便生成更加准确的服务数据', color: 'yellow' })
-      return
-    }
-
+    const errors: { salary?: string; jd?: string } = {}
+    if (Boolean(minSalary) !== Boolean(maxSalary)) errors.salary = '请同时填写薪资上下限，或者都留空。'
+    else if (minSalary && Number(minSalary) > Number(maxSalary)) errors.salary = '最低薪资不能高于最高薪资。'
     const currentJd = interviewStore.selectedPosition?.jd?.trim() || ''
-    if (currentJd.length < 50 || currentJd.length > 2000) {
-      toast({ title: '请填写更加详细的岗位职责（JD）', description: '以便生成更加准确的服务数据（最少 50 字）', color: 'yellow' })
+    if (currentJd.length < 50 || currentJd.length > 2000) errors.jd = '请填写 50 至 2000 字的岗位职责，让问题更贴近你的目标。'
+    setInputErrors(errors)
+    if (errors.salary || errors.jd) {
+      document.getElementById(errors.salary ? 'salary-min' : 'target-jd')?.focus()
       return
-    }
-
-    const balanceMap: Record<ServiceType, number> = {
-      resume: (userStore.userInfo as any)?.resumeRemainingCount ?? 0,
-      special: (userStore.userInfo as any)?.specialRemainingCount ?? 0,
-      behavior: (userStore.userInfo as any)?.behaviorRemainingCount ?? 0
     }
 
     // 显示确认弹窗
@@ -423,8 +426,8 @@ export default function InterviewPageContent() {
     // 优先使用传入的参数，其次使用 local state，最后使用 store
     const currentCompany = overrideData?.company || company || interviewStore.selectedPosition?.company || '未指定公司'
     const currentPositionName = overrideData?.positionName || positionName || interviewStore.selectedPosition?.positionName || ''
-    const currentMinSalary = overrideData?.minSalary?.toString() || minSalary || String(interviewStore.selectedPosition?.minSalary || '')
-    const currentMaxSalary = overrideData?.maxSalary?.toString() || maxSalary || String(interviewStore.selectedPosition?.maxSalary || '')
+    const currentMinSalary = overrideData?.minSalary?.toString() || minSalary || String(interviewStore.selectedPosition?.minSalary ?? '')
+    const currentMaxSalary = overrideData?.maxSalary?.toString() || maxSalary || String(interviewStore.selectedPosition?.maxSalary ?? '')
     const currentJd = overrideData?.jd || jd || interviewStore.selectedPosition?.jd || ''
     const currentResumeId = overrideData?.resumeId !== undefined ? overrideData.resumeId : interviewStore.resumeId
 
@@ -821,124 +824,115 @@ export default function InterviewPageContent() {
           <div className="border-b border-line px-5 py-6 sm:px-8"><p className="eyebrow !mb-2">让练习更贴近真实机会</p><h1 className="text-2xl font-bold text-ink">完善这次练习的目标</h1><p className="mt-2 text-sm text-muted">补充公司与职位要求，麦麦会结合你的经历展开提问。</p></div>
 
           <div className="p-5 sm:p-8 space-y-6">
-            {/* 服务类型提示卡 */}
-            <div className={`rounded-xl p-4 flex gap-4 border ${cfg.containerClass}`}>
-              <div className="shrink-0">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${cfg.iconBgClass}`}>
-                  <Icon name={cfg.icon} className={`w-5 h-5 ${cfg.iconClass}`} />
-                </div>
-              </div>
-              <div className="text-sm text-neutral-600 leading-relaxed flex-1">
-                <p className="font-bold text-neutral-900 mb-1 flex items-center gap-2">
-                  {cfg.title}
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${cfg.badgeClass}`}>{cfg.badge}</span>
-                </p>
-                <p className="text-neutral-500 text-xs mb-2">{cfg.description}</p>
-                <ul className="grid sm:grid-cols-2 gap-2 text-xs text-neutral-500">
-                  {cfg.points.map((point: string, i: number) => (
-                    <li key={i} className="flex items-center gap-1.5">
-                      <Icon name="i-heroicons-check-circle" className="w-3.5 h-3.5 text-green-500" />
-                      <span>{point}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+            <div className="flex items-start gap-3 rounded-xl border border-primary-100 bg-primary-50 px-4 py-4">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-100 text-primary-700"><Icon name={cfg.icon} className="h-5 w-5" /></span>
+              <div><p className="text-sm font-semibold text-ink">{cfg.badge}</p><p className="mt-1 text-sm leading-6 text-muted">结合简历与岗位要求，生成预测问题、参考思路和练习重点。</p></div>
             </div>
 
             {/* 表单字段 */}
             <div className="grid gap-6 md:grid-cols-[1fr_1fr_1.4fr]">
               <div className="space-y-2">
-                <label htmlFor="target-company" className="flex items-center gap-1.5 text-sm font-semibold text-neutral-700">
-                  <Icon name="i-heroicons-building-office-2" className="w-4 h-4 text-neutral-400" />
+                <label htmlFor="target-company" className="flex items-center gap-1.5 text-sm font-semibold text-ink">
+                  <Icon name="i-heroicons-building-office-2" className="w-4 h-4 text-muted" />
                   目标公司
                 </label>
                 <input
                   id="target-company"
                   value={company}
                   onChange={e => { setCompany(e.target.value); interviewStore.setSelectedPosition({ ...interviewStore.selectedPosition, company: e.target.value }) }}
-                  placeholder="请输入公司全称，如：字节跳动"
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  placeholder="选填，例如目标公司或团队"
+                  className="w-full px-3 py-2.5 border border-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
               </div>
               <div className="space-y-2">
-                <label htmlFor="target-position" className="flex items-center gap-1.5 text-sm font-semibold text-neutral-700">
-                  <Icon name="i-heroicons-briefcase" className="w-4 h-4 text-neutral-400" />
+                <label htmlFor="target-position" className="flex items-center gap-1.5 text-sm font-semibold text-ink">
+                  <Icon name="i-heroicons-briefcase" className="w-4 h-4 text-muted" />
                   岗位名称
                 </label>
                 <input
                   id="target-position"
                   value={positionName}
                   onChange={e => { setPositionName(e.target.value); interviewStore.setSelectedPosition({ ...interviewStore.selectedPosition, positionName: e.target.value }) }}
-                  placeholder="请输入岗位名称，如：前端开发工程师"
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  placeholder="例如：前端开发工程师"
+                  className="w-full px-3 py-2.5 border border-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
               </div>
               <div className="space-y-2">
-                <label className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-neutral-700">
+                <label className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-ink">
                   <span className="flex items-center gap-1.5">
-                    <Icon name="i-heroicons-currency-dollar" className="w-4 h-4 text-neutral-400" />
+                    <Icon name="i-heroicons-currency-dollar" className="w-4 h-4 text-muted" />
                     薪资范围
                   </span>
-                  <span className="text-[10px] font-medium text-red-500 bg-red-50 px-2 py-0.5 rounded-full border border-red-100">必填</span>
-                  <span className="text-xs text-neutral-400 font-normal">以千（K）为单位</span>
+                  <span className="text-xs font-normal text-muted">选填</span>
+                  <span className="text-xs text-muted font-normal">以千（K）为单位</span>
                 </label>
                 <div className="flex items-center gap-2">
                   <div className="relative min-w-0 flex-1">
                     <input
                       type="number"
+                      id="salary-min"
                       min="0"
                       max="9999"
                       aria-label="最低薪资（千元）"
+                      aria-invalid={Boolean(inputErrors.salary)}
+                      aria-describedby="salary-helper"
                       value={minSalary}
                       onChange={e => {
+                        setInputErrors(errors => ({ ...errors, salary: undefined }))
+                        if (!e.target.value) { setMinSalary(''); interviewStore.setSelectedPosition({ ...interviewStore.selectedPosition, minSalary: undefined }); return }
                         const val = Math.min(9999, Math.max(0, Number(e.target.value) || 0))
                         setMinSalary(String(val))
                         interviewStore.setSelectedPosition({ ...interviewStore.selectedPosition, minSalary: val })
                       }}
                       placeholder="最低"
-                      className="w-full pl-3 pr-8 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      className="w-full pl-3 pr-8 py-2.5 border border-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                     />
-                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-neutral-400 pointer-events-none">k</span>
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted pointer-events-none">k</span>
                   </div>
-                  <Icon name="i-heroicons-arrow-right" className="w-4 h-4 text-neutral-400 shrink-0" />
+                  <Icon name="i-heroicons-arrow-right" className="w-4 h-4 text-muted shrink-0" />
                   <div className="relative min-w-0 flex-1">
                     <input
                       type="number"
                       min="0"
                       max="9999"
                       aria-label="最高薪资（千元）"
+                      aria-invalid={Boolean(inputErrors.salary)}
+                      aria-describedby="salary-helper"
                       value={maxSalary}
                       onChange={e => {
+                        setInputErrors(errors => ({ ...errors, salary: undefined }))
+                        if (!e.target.value) { setMaxSalary(''); interviewStore.setSelectedPosition({ ...interviewStore.selectedPosition, maxSalary: undefined }); return }
                         const val = Math.min(9999, Math.max(0, Number(e.target.value) || 0))
                         setMaxSalary(String(val))
                         interviewStore.setSelectedPosition({ ...interviewStore.selectedPosition, maxSalary: val })
                       }}
                       placeholder="最高"
-                      className="w-full pl-3 pr-8 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      className="w-full pl-3 pr-8 py-2.5 border border-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                     />
-                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-neutral-400 pointer-events-none">k</span>
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted pointer-events-none">k</span>
                   </div>
                 </div>
+                <p id="salary-helper" role={inputErrors.salary ? 'alert' : undefined} className={`text-xs leading-5 ${inputErrors.salary ? 'text-red-700' : 'text-muted'}`}>{inputErrors.salary || '选填，不清楚薪资也可以开始押题。'}</p>
               </div>
             </div>
 
             {/* JD 文本框 */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <label htmlFor="target-jd" className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-neutral-700">
-                  <Icon name="i-heroicons-document-text" className="w-4 h-4 text-neutral-400" />
+                <label htmlFor="target-jd" className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-ink">
+                  <Icon name="i-heroicons-document-text" className="w-4 h-4 text-muted" />
                   岗位职责 (JD)
-                  <span className="text-[10px] font-medium text-red-500 bg-red-50 px-2 py-0.5 rounded-full border border-red-100">必填</span>
-                  <span className="text-xs text-neutral-400">{MIN_JD} ~ {MAX_JD} 字</span>
+                  <span className="text-xs font-normal text-muted">必填</span>
+                  <span className="text-xs text-muted">{MIN_JD} ~ {MAX_JD} 字</span>
                 </label>
                 <div className="flex items-center gap-2">
-                  {jd.length > 0 && (
-                    <span className="text-[10px] bg-green-50 text-green-600 px-2 py-0.5 rounded-full border border-green-100 flex items-center gap-1">
+                  {jd.trim().length >= MIN_JD && (
+                    <span className="text-xs bg-primary-50 text-primary-700 px-2 py-0.5 rounded-full border border-primary-100 flex items-center gap-1">
                       <Icon name="i-heroicons-check" className="w-3 h-3" />
-                      内容已输入
+                      内容已就绪
                     </span>
                   )}
-                  <span className={`text-xs font-mono ${jd.length > 0 ? 'text-primary-600 font-medium' : 'text-neutral-400'}`}>
+                  <span className={`text-xs font-mono ${jd.length > 0 ? 'text-primary-600 font-medium' : 'text-muted'}`}>
                     {jd.length} 字
                   </span>
                 </div>
@@ -946,13 +940,15 @@ export default function InterviewPageContent() {
               <div className="relative">
                 <textarea
                   id="target-jd"
+                  aria-invalid={Boolean(inputErrors.jd)}
+                  aria-describedby="jd-helper"
                   value={jd}
-                  onChange={e => { setJd(e.target.value); interviewStore.setSelectedPosition({ ...interviewStore.selectedPosition, jd: e.target.value }) }}
+                  onChange={e => { setInputErrors(errors => ({ ...errors, jd: undefined })); setJd(e.target.value); interviewStore.setSelectedPosition({ ...interviewStore.selectedPosition, jd: e.target.value }) }}
                   minLength={MIN_JD}
                   maxLength={MAX_JD}
                   placeholder={`请直接粘贴目标岗位的职位描述（JD）...\n\n提示：越详细的 JD（包含任职要求、技术栈、加分项），生成的押题越准确，最少 ${MIN_JD} 字，最大 ${MAX_JD} 字。\n\n示例：\n1. 负责前端核心业务功能的开发与维护\n2. 熟练掌握 Vue3、TypeScript 等技术栈\n3. 具备良好的跨部门沟通协作能力`}
                   rows={8}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+                  className="w-full px-4 py-3 border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
                 />
                 {jd.length === 0 && (
                   <div className="absolute bottom-4 right-4 pointer-events-none">
@@ -960,10 +956,11 @@ export default function InterviewPageContent() {
                   </div>
                 )}
               </div>
+              <p id="jd-helper" role={inputErrors.jd ? 'alert' : undefined} className={`text-xs leading-6 ${inputErrors.jd ? 'text-red-700' : 'text-muted'}`}>{inputErrors.jd || '直接粘贴招聘信息里的岗位职责与任职要求。请删除不希望用于分析的敏感信息。'}</p>
             </div>
 
             {/* 底部操作 */}
-            <div className="pt-4 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="pt-4 border-t border-line flex flex-col sm:flex-row items-center justify-between gap-4">
               <p className="text-xs text-muted">确认开始后将消耗 1 次{cfg.consumeText}</p>
               <button
                 onClick={handleSubmit}
@@ -1205,7 +1202,7 @@ export default function InterviewPageContent() {
     const isEnded = interviewStatus === 'ended'
 
     return (
-      <div className="h-full flex flex-col">
+      <div className="h-full min-h-0 flex flex-col">
         {/* 倒计时遮罩 */}
         {showCountdown && (
           <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm text-white">
@@ -1225,37 +1222,38 @@ export default function InterviewPageContent() {
         {/* 顶部信息栏 */}
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 border-b border-line bg-white shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-              <Icon name="i-heroicons-sparkles" className="w-4 h-4 text-white" />
+            <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center">
+              <Icon name="i-heroicons-sparkles" className="w-4 h-4 text-primary-700" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-900">{interviewStore.interviewerName}</p>
-              <p className="text-xs text-gray-400">{serviceLabels[serviceType]}{interviewStore.activePracticeIntensity && interviewStore.sessionTargetDuration
+              <p className="text-sm font-semibold text-ink">{interviewStore.interviewerName}</p>
+              <p className="text-xs text-muted">{serviceLabels[serviceType]}{interviewStore.activePracticeIntensity && interviewStore.sessionTargetDuration
                 ? ` · ${PRACTICE_OPTIONS.find(option => option.value === interviewStore.activePracticeIntensity)?.label || ''} · ${interviewStore.sessionTargetDuration} 分钟上限`
                 : ''}</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <span role="status" className="mr-1 rounded-full border border-line bg-paper px-3 py-2 text-xs text-muted">{isEnded ? '本场已结束' : interviewStatus === 'suspend' ? '已暂停' : isStreaming ? '正在提问' : speechSynthesis.isSpeaking ? '正在朗读' : '轮到你回答'}</span>
             <button
               onClick={speechSynthesis.toggle}
               disabled={!speechSynthesis.isSupported}
               aria-pressed={speechSynthesis.isEnabled && speechSynthesis.isSupported}
               className={`inline-flex min-h-11 shrink-0 whitespace-nowrap items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 speechSynthesis.isEnabled
-                  ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-                  : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                  ? 'bg-primary-50 text-primary-700 hover:bg-primary-100'
+                  : 'bg-paper text-muted hover:bg-primary-50'
               }`}
               title={speechSynthesis.isEnabled ? '关闭语音' : '开启语音'}
             >
               <Icon name={speechSynthesis.isEnabled ? 'i-heroicons-speaker-wave' : 'i-heroicons-speaker-x-mark'} className="w-3.5 h-3.5" />
               {!speechSynthesis.isSupported ? '朗读不可用' : speechSynthesis.isEnabled ? `${speechSynthesis.source === 'cloud' ? '云端' : '浏览器'}朗读` : '朗读关闭'}
             </button>
-            {(isStreaming || interviewStatus === 'in_progress') && !isEnded && (
+            {speechSynthesis.isSpeaking && !isEnded && (
               <button
                 onClick={() => {
                   speechSynthesis.stop()
                 }}
-                className="inline-flex min-h-11 shrink-0 whitespace-nowrap items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 text-xs font-medium transition-colors"
+                className="inline-flex min-h-11 shrink-0 whitespace-nowrap items-center gap-1.5 px-3 py-1.5 rounded-lg border border-line bg-white text-muted hover:bg-paper disabled:opacity-40 text-xs font-medium transition-colors"
                 title="停止当前朗读"
                 disabled={!speechSynthesis.isSpeaking}
               >
@@ -1282,7 +1280,7 @@ export default function InterviewPageContent() {
                     toast({ title: '无法查看报告', description: '面试ID不存在，请重新开始面试', color: 'red' })
                   }
                 }}
-                className="inline-flex min-h-11 shrink-0 whitespace-nowrap items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-medium hover:bg-green-700 transition-colors"
+                className="inline-flex min-h-11 shrink-0 whitespace-nowrap items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-600 text-white text-xs font-medium hover:bg-primary-700 transition-colors"
               >
                 <Icon name="i-heroicons-document-text" className="w-3.5 h-3.5" />
                 查看报告
@@ -1311,55 +1309,55 @@ export default function InterviewPageContent() {
         </div>}
         {/* 消息列表 */}
         {interviewStatus === 'suspend' && <p role="status" className="bg-primary-50 px-6 py-3 text-sm text-primary-900">已暂停，草稿已保留。继续后从当前问题接着回答。</p>}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-8"><div className="mx-auto w-full max-w-5xl space-y-5">
           {messages.length === 0 && !isStreaming && (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <Icon name="i-heroicons-chat-bubble-left-right" className="w-16 h-16 text-gray-200 mb-4" />
-              <p className="text-neutral-400 text-sm">面试即将开始...</p>
+              <p className="text-muted text-sm">面试即将开始...</p>
             </div>
           )}
           {(messages as any[]).map((msg: any, i: number) => (
             <div key={i} className={`flex gap-3 ${msg.role === 'candidate' ? 'flex-row-reverse' : 'flex-row'}`}>
               <div className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${
-                msg.role === 'candidate' ? 'bg-primary-100' : 'bg-gradient-to-br from-indigo-500 to-purple-600'
+                msg.role === 'candidate' ? 'border border-line bg-white text-ink' : 'bg-primary-100 text-primary-700'
               }`}>
-                <Icon name={msg.role === 'candidate' ? 'i-heroicons-user' : 'i-heroicons-sparkles'}
-                  className={`w-5 h-5 ${msg.role === 'candidate' ? 'text-primary-600' : 'text-white'}`} />
+                <Icon name={msg.role === 'candidate' ? 'i-heroicons-user' : 'i-heroicons-microphone'}
+                  className={`w-5 h-5 ${msg.role === 'candidate' ? 'text-ink' : 'text-primary-700'}`} />
               </div>
-              <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${
+              <div className={`max-w-[85%] sm:max-w-[760px] rounded-2xl px-5 py-4 text-sm leading-7 shadow-sm ${
                 msg.role === 'candidate'
-                  ? 'bg-primary-600 text-white rounded-tr-none'
-                  : 'bg-white border border-gray-100 text-neutral-800 rounded-tl-none'
+                  ? 'bg-ink text-white rounded-tr-md'
+                  : 'bg-white border border-line text-ink rounded-tl-md'
               }`}>
-                <div className="whitespace-pre-wrap">{msg.content}</div>
+                <p className={`mb-2 text-xs font-medium ${msg.role === 'candidate' ? 'text-white/60' : 'text-primary-700'}`}>{msg.role === 'candidate' ? '你 · 候选人' : '麦麦 · 面试官'}</p><div className="whitespace-pre-wrap">{msg.content}</div>
               </div>
             </div>
           ))}
           {isStreaming && (
             <div className="flex gap-3">
-              <div className="shrink-0 w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-                <Icon name="i-heroicons-sparkles" className="w-5 h-5 text-white" />
+              <div className="shrink-0 w-9 h-9 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center">
+                <Icon name="i-heroicons-sparkles" className="w-5 h-5 text-primary-700" />
               </div>
               <div className="bg-white border border-gray-100 rounded-2xl rounded-tl-none px-4 py-3 shadow-sm flex items-center gap-2">
                 <div className="flex gap-1">
                   {[0, 0.2, 0.4].map((delay, i) => (
-                    <div key={i} className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: `${delay}s` }} />
+                    <div key={i} className="w-2 h-2 bg-primary-400 rounded-full animate-bounce motion-reduce:animate-none" style={{ animationDelay: `${delay}s` }} />
                   ))}
                 </div>
-                <span className="text-xs text-gray-400">AI 思考中...</span>
+                <span className="text-xs text-muted">面试官正在整理问题…</span>
               </div>
             </div>
           )}
           <div ref={messagesEndRef} />
-        </div>
+        </div></div>
 
         {!isEnded && <AnswerComposer key={interviewStore.answerMode} initialMode={interviewStore.answerMode} value={inputMessage} onChange={setInputMessage}
           onSend={sendAnswer} disabled={!canSend || isStreaming}
           onBeforeRecord={speechSynthesis.stop} />}
 
         {isEnded && (
-          <div className="border-t border-gray-100 p-4 bg-green-50 shrink-0 text-center">
-            <p className="text-sm text-green-700 font-medium mb-2">🎉 面试已结束，感谢您的参与！</p>
+          <div className="border-t border-gray-100 p-4 bg-primary-50 shrink-0 text-center">
+            <p className="text-sm text-primary-700 font-medium mb-2">🎉 面试已结束，感谢您的参与！</p>
             <button
               onClick={() => {
                 const rid = interviewStore.resultId || currentResultId
@@ -1369,7 +1367,7 @@ export default function InterviewPageContent() {
                   toast({ title: '无法查看报告', description: '面试ID不存在，请重新开始面试', color: 'red' })
                 }
               }}
-              className="px-6 py-2 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 transition-colors"
+              className="px-6 py-2 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-700 transition-colors"
             >
               查看面试报告
             </button>

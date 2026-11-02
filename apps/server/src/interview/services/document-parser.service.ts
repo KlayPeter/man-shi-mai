@@ -36,14 +36,10 @@ export class DocumentParserService {
     try {
       this.logger.log('开始解析用户简历文档');
 
-      // 1. 验证 URL
-      this.validateUrl(url);
-
-      // 2. 下载文件
-      const signedUrl = await this.storage.getResumeReadUrl(url, userId);
-      const buffer = await this.downloadFile(
-        signedUrl,
-        Math.min(maxFileSize, this.MAX_FILE_SIZE),
+      const buffer = await this.downloadDocumentFromUrl(
+        url,
+        userId,
+        maxFileSize,
       );
 
       const text = await this.parseDocument(buffer, url);
@@ -55,6 +51,19 @@ export class DocumentParserService {
       this.logger.error('文档解析失败');
       throw error;
     }
+  }
+
+  async downloadDocumentFromUrl(
+    url: string,
+    userId: string,
+    maxFileSize = this.MAX_FILE_SIZE,
+  ): Promise<Buffer> {
+    this.validateUrl(url);
+    const signedUrl = await this.storage.getResumeReadUrl(url, userId);
+    return this.downloadFile(
+      signedUrl,
+      Math.min(maxFileSize, this.MAX_FILE_SIZE),
+    );
   }
 
   async parseDocument(buffer: Buffer, fileName: string): Promise<string> {

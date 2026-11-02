@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const outputDirectory = (mode: string, override = ''): string => JSON.parse(
+const outputDirectory = (mode: 'development' | 'production' | 'test', override = ''): string => JSON.parse(
   execFileSync(process.execPath, ['-e', 'process.stdout.write(JSON.stringify(require("./next.config.js").distDir))'], {
     cwd: webRoot,
     env: { ...process.env, NODE_ENV: mode, NEXT_DIST_DIR: override },
@@ -22,7 +22,7 @@ describe('Next build output isolation', () => {
   })
 
   it('preserves an explicit output directory for isolated verification', () => {
-    for (const mode of ['development', 'production']) {
+    for (const mode of ['development', 'production'] as const) {
       expect(outputDirectory(mode, '.next/isolated-verification')).toBe('.next/isolated-verification')
     }
   })

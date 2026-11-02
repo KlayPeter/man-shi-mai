@@ -29,6 +29,8 @@ export async function forwardBackendRequest(request: Request, path: string, stre
     const responseHeaders = new Headers({ 'Cache-Control': 'no-store' })
     const contentType = response.headers.get('content-type')
     if (contentType) responseHeaders.set('Content-Type', contentType)
+    const disposition = response.headers.get('content-disposition')
+    if (disposition) responseHeaders.set('Content-Disposition', disposition)
     if (streaming) responseHeaders.set('X-Accel-Buffering', 'no')
     return new Response(response.body, { status: response.status, headers: responseHeaders })
   } catch {

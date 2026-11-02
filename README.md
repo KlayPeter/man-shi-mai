@@ -122,7 +122,7 @@ GitHub Actions 在 `main` 推送和 PR 时执行冻结锁文件安装及 `pnpm c
 
 ## 文件上传配置
 
-默认 `RESUME_STORAGE_DRIVER=local`，无需 OSS：上传文本型 PDF／DOCX（最多 5MB），后端解析成功后保存私有原文件和文本快照，面试直接读取快照。上传文件可查看提取内容，在线简历继续使用编辑器。通过根命令启动时，原文件默认保存在 `apps/server/data/resumes`；可用 `RESUME_LOCAL_DIR` 指定绝对目录。该目录不通过静态路由公开，也不提交 Git；保留文件时需同时保留 MongoDB 记录。
+默认 `RESUME_STORAGE_DRIVER=local`，无需 OSS：上传文本型 PDF／DOCX（最多 5MB），后端解析成功后保存私有原文件和文本快照，面试直接读取快照。上传文件可分别查看原始 PDF 排版和面试使用的提取文字；DOCX 提供原文件下载及提取文字。原文件经登录鉴权接口读取，不暴露临时签名地址。前端 dev/build 会自动生成 PDF.js 本地浏览器资源，无需外部预览服务；在线简历继续使用既有编辑器。通过根命令启动时，原文件默认保存在 `apps/server/data/resumes`；可用 `RESUME_LOCAL_DIR` 指定绝对目录。该目录不通过静态路由公开，也不提交 Git；保留文件时需同时保留 MongoDB 记录。
 
 后续接入 OSS：设置 `RESUME_STORAGE_DRIVER=oss`，再填写 `OSS_STS_ROLE_ARN`、OSS Bucket／地域及具有 AssumeRole 权限的服务端凭据，重启后端即可切换新上传。已有本地简历的文本快照仍可用于面试，不自动搬迁历史原文件。浏览器只获得当前用户目录的临时权限；配置见 [文件临时授权](apps/server/src/sts/Agent.md)。真实 Bucket 授权、CORS、上传和读取仍需独立验收。
 

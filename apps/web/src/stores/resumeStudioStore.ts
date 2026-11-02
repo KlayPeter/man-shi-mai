@@ -6,6 +6,7 @@ import { toast } from './toastStore';
 interface ResumeStudioState {
   currentResume: IResume | null;
   isLoading: boolean;
+  loadError: string;
   isSaving: boolean;
   activeSection: string; // 当前激活的左侧版块 (如 'basics', 'work', 'education')
   
@@ -71,13 +72,14 @@ function generatePlainTextSnapshot(editorData: IResumeEditorData): string {
 export const useResumeStudioStore = create<ResumeStudioState>((set, get) => ({
   currentResume: null,
   isLoading: false,
+  loadError: '',
   isSaving: false,
   activeSection: 'basics',
 
   setActiveSection: (section: string) => set({ activeSection: section }),
 
   fetchResumeDetail: async (id: string) => {
-    set({ isLoading: true });
+    set({ isLoading: true, loadError: '', currentResume: null });
     try {
       const data: any = await request.get(`/resume/detail/${id}`);
       const resume = data;
@@ -86,7 +88,7 @@ export const useResumeStudioStore = create<ResumeStudioState>((set, get) => ({
       }
       set({ currentResume: resume });
     } catch (e: any) {
-      toast({ title: '网络错误', description: '无法加载简历数据', color: 'red' });
+      set({ loadError: '简历暂时无法加载，可能已被删除或网络不可用。请重试或返回简历列表。' });
     } finally {
       set({ isLoading: false });
     }

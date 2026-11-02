@@ -7,7 +7,7 @@ test('从输入页首次确认押题：切换布局后只建立一条流，不�
     localStorage.setItem('userInfo', JSON.stringify(user))
     localStorage.setItem('interview-storage', JSON.stringify({ state: {
       selectedService: 'resume', resumeText: '合成简历：负责前端订单管理系统、性能分析与接口联调。',
-      selectedPosition: { positionId: 'frontend', positionName: '前端工程师', company: '合成团队', minSalary: 15, maxSalary: 25,
+      selectedPosition: { positionId: 'frontend', positionName: '前端工程师', company: '合成团队',
         jd: '负责 React 与 TypeScript 订单后台，完成组件设计、接口联调、性能分析、单元测试与可访问性改进，并与产品、后端和测试共同验收。' },
     }, version: 0 }))
   }, user)

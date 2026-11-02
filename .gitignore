@@ -43,3 +43,6 @@ yarn.lock
 /learning_agent_tutorial.md
 /learning_harness_tutorial.md
 /resume-migration-plan.md
+
+# Generated PDF.js browser fonts, character maps and decoders
+apps/web/public/pdfjs/

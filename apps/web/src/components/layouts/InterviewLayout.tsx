@@ -46,7 +46,7 @@ export default function InterviewLayout({ children }: { children: React.ReactNod
           <div className="flex items-center gap-3"><button onClick={() => navigate('/')} aria-label="返回首页" className="icon-button"><ArrowLeft size={18} /></button><span className="text-sm font-semibold text-ink">{title}</span><span className="hidden text-xs text-muted sm:block">/ 为下一次机会做准备</span></div>
           <span className="rounded-full border border-line bg-white px-3 py-1.5 text-xs text-muted">第 {currentStep} / 3 步</span>
         </header>
-        <div className="interview-scroll"><div>{children}</div></div>
+        <div className="interview-scroll" data-live={step === 'interview' ? 'true' : undefined}><div>{children}</div></div>
       </main>
     </div>
   )

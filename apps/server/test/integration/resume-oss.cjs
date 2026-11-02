@@ -211,6 +211,7 @@ async function account() {
     await page.locator('input[type=file]').setInputFiles(fixture('pdf'));
     await page.getByRole('button', { name: '上传', exact: true }).click();
     await page.waitForURL(/\/resume\/[a-f0-9]{24}$/, { timeout: 45000 });
+    await page.getByRole('button', { name: '面试使用的内容', exact: true }).click();
     const text = page.getByRole('region', { name: '简历提取内容' });
     await text.waitFor();
     assert((await text.innerText()).includes('Frontend engineer'));

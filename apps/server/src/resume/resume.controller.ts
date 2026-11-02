@@ -9,7 +9,9 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFile,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ResumeService } from './resume.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -29,6 +31,24 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 @UseGuards(JwtAuthGuard)
 export class ResumeController {
   constructor(private readonly resumeService: ResumeService) {}
+
+  @Get('file/:id')
+  @ApiOperation({ summary: '读取本人上传的简历原文件' })
+  async originalFile(
+    @Request() req: { user: { userId: string } },
+    @Param('id') id: string,
+    @Res() response: Response,
+  ) {
+    const file = await this.resumeService.getOriginalFile(req.user.userId, id);
+    response.setHeader('Content-Type', file.contentType);
+    response.setHeader(
+      'Content-Disposition',
+      `inline; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
+    );
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    response.send(file.buffer);
+  }
 
   @Get('upload-config')
   uploadConfig() {

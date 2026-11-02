@@ -59,6 +59,8 @@ export interface IResume {
   userId: string;
   resumeName: string;
   url?: string;
+  localFileKey?: string;
+  originalFileName?: string;
   uploadTime: string;
   sourceType: 'upload' | 'editor' | 'hybrid';
   editorData: IResumeEditorData | Record<string, any>;
