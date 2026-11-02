@@ -1,9 +1,10 @@
 # 面试麦品牌标识
 
-当前方案为「同席」：面试官与候选人相对而坐，人物下方用圆润的座椅轮廓收拢，中间面试桌使用短桌脚和底座，保留面对面交流的场景。图形不使用字体、渐变或外部资源，支持单色与反白。
+当前方案为「对谈 M」：两个人的头部连接身体，相向的手臂形成 M 的斜线。整体优先识别为 M，头肩曲线再传达面试交流。主版是单个闭合轮廓；桌面收成短横线的版本作为备选。图形不使用字体、渐变或外部资源，支持单色与反白。
 
-- 打开 [同席设计](seating/index.html) 比较原版与「同席」「倾听」「简席」三种细化，并查看深浅背景及小尺寸效果；[当前预览](seating/preview.png) 可直接查看。
-- [interview-seat.svg](seating/interview-seat.svg) 是可编辑的单色母版，使用 `currentColor`；[mark-1024.png](seating/mark-1024.png) 为透明背景导出。
+- 打开 [双人 M 设计](monogram/index.html) 比较「对谈 M」「同席 M」「柔角 M」，并查看深浅背景及小尺寸效果；[当前预览](monogram/preview.png) 可直接查看。
+- [dialogue-m.svg](monogram/dialogue-m.svg) 是可编辑的单色母版，使用 `currentColor`；[mark-1024.png](monogram/mark-1024.png) 为透明背景导出。
+- [面试席细化](seating/index.html) 保留上一轮人物与桌子的构图探索。
 - [面试主题探索](refinements/index.html) 保留麦克风、双人 M 及最初的面试席方向。
 - [index.html](index.html) 与 [preview.png](preview.png) 保留初轮六个方向的探索，原「开口成章」可在 [01-dialogue-m.svg](01-dialogue-m.svg) 查看。
 - 站内图形位于 `apps/web/src/components/Brand.tsx`，沿用现有招聘季颜色：浅底使用 `primary-600`，深色侧栏使用 `lime`。图形本身不随季节变化。
