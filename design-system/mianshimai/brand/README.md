@@ -1,9 +1,10 @@
 # 面试麦品牌标识
 
-当前方案为「开口有声」：M 的竖线与转折构成麦克风拾音部件，下方的弧形支架与底座完成麦克风轮廓，对应语音面试、开口回答与产品名中的「麦」。图形不使用字体、渐变或外部资源，支持单色与反白。
+当前方案为「同席」：面试官与候选人相对而坐，人物下方用圆润的座椅轮廓收拢，中间面试桌使用短桌脚和底座，保留面对面交流的场景。图形不使用字体、渐变或外部资源，支持单色与反白。
 
-- 打开 [面试主题设计](refinements/index.html) 比较「开口有声」「面对面」「面试席」三个方向，并查看深浅背景及小尺寸效果；[当前预览](refinements/preview.png) 可直接查看。
-- [voice-m.svg](refinements/voice-m.svg) 是可编辑的单色母版，使用 `currentColor`；[mark-1024.png](refinements/mark-1024.png) 为透明背景导出。
+- 打开 [同席设计](seating/index.html) 比较原版与「同席」「倾听」「简席」三种细化，并查看深浅背景及小尺寸效果；[当前预览](seating/preview.png) 可直接查看。
+- [interview-seat.svg](seating/interview-seat.svg) 是可编辑的单色母版，使用 `currentColor`；[mark-1024.png](seating/mark-1024.png) 为透明背景导出。
+- [面试主题探索](refinements/index.html) 保留麦克风、双人 M 及最初的面试席方向。
 - [index.html](index.html) 与 [preview.png](preview.png) 保留初轮六个方向的探索，原「开口成章」可在 [01-dialogue-m.svg](01-dialogue-m.svg) 查看。
 - 站内图形位于 `apps/web/src/components/Brand.tsx`，沿用现有招聘季颜色：浅底使用 `primary-600`，深色侧栏使用 `lime`。图形本身不随季节变化。
 - 浏览器使用 `apps/web/public/logo.svg`；PNG 兼容图标分别为 `logo.png`（512）、`icon-192.png`（192）、`apple-touch-icon.png`（180）。PNG 带奶油色背景及安全留白。
