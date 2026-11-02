@@ -7,7 +7,6 @@ import {
   HumanMessage,
   BaseMessage,
   SystemMessage,
-  ToolMessage,
 } from '@langchain/core/messages';
 import { PromptTemplate } from '@langchain/core/prompts';
 import { StructuredOutputParser } from '@langchain/core/output_parsers';
@@ -16,7 +15,6 @@ import {
   PhaseTransitionSchema,
   PhaseTransition,
 } from '../dto/transition.schema';
-import { createCodeSandboxTool } from '../tools/code-sandbox.tool';
 
 /**
  * 定义 LangGraph 的状态 Annotation
@@ -151,7 +149,10 @@ export class InterviewAgentService {
    * 构建并编译 LangGraph 状态图
    * @param onChunkToken 外部传入的流式回调
    */
-  private compileInterviewGraph(onChunkToken: (token: string) => void) {
+  private compileInterviewGraph(
+    onChunkToken: (token: string) => void,
+    signal?: AbortSignal,
+  ) {
     // 强制声明为 any 彻底关掉 LangGraph 的类型推导校验
     const workflow: any = new StateGraph(InterviewStateAnnotation as any);
 
@@ -160,22 +161,19 @@ export class InterviewAgentService {
       this.handleIntroduction(state, onChunkToken),
     );
     workflow.addNode('resume_digging', (state: any) =>
-      this.handleResumeDigging(state, onChunkToken),
+      this.handleResumeDigging(state, onChunkToken, signal),
     );
     workflow.addNode('tech_assessment', (state: any) =>
-      this.handleTechAssessment(state, onChunkToken),
+      this.handleTechAssessment(state, onChunkToken, signal),
     );
     workflow.addNode('behavioral_test', (state: any) =>
-      this.handleBehavioralTest(state, onChunkToken),
+      this.handleBehavioralTest(state, onChunkToken, signal),
     );
     workflow.addNode('candidate_qa', (state: any) =>
-      this.handleCandidateQA(state, onChunkToken),
+      this.handleCandidateQA(state, onChunkToken, signal),
     );
     workflow.addNode('closing', (state: any) =>
       this.handleClosing(state, onChunkToken),
-    );
-    workflow.addNode('execute_tool', (state: any) =>
-      this.handleExecuteTool(state, onChunkToken),
     );
 
     // 2. 设置入口和动态阶段路由
@@ -191,19 +189,7 @@ export class InterviewAgentService {
     });
 
     workflow.addConditionalEdges('tech_assessment', (state: any) => {
-      const lastMsg = state.messages[state.messages.length - 1];
-      if (
-        lastMsg instanceof AIMessage &&
-        lastMsg.tool_calls &&
-        lastMsg.tool_calls.length > 0
-      ) {
-        return 'execute_tool';
-      }
       return state.shouldTransition ? 'behavioral_test' : END;
-    });
-
-    workflow.addConditionalEdges('execute_tool', (state: any) => {
-      return state.currentPhase || 'tech_assessment';
     });
 
     workflow.addConditionalEdges('behavioral_test', (state: any) => {
@@ -229,12 +215,7 @@ export class InterviewAgentService {
   ): Promise<any> {
     const text = `你好，我是今天的面试官麦麦。很高兴能与你进行这次面试。我看到你申请的是 ${state.positionName} 岗位。首先，请你简单介绍一下自己。`;
 
-    // 模拟打字机流式回传开场白
-    const chunkSize = 5;
-    for (let i = 0; i < text.length; i += chunkSize) {
-      onChunkToken(text.slice(i, i + chunkSize));
-      await new Promise((r) => setTimeout(r, 20));
-    }
+    onChunkToken(text);
 
     return {
       messages: [new AIMessage(text)],
@@ -246,13 +227,14 @@ export class InterviewAgentService {
   private async handleResumeDigging(
     state: any,
     onChunkToken: (t: string) => void,
+    signal?: AbortSignal,
   ): Promise<any> {
     const reachedLimit =
       state.questionsAskedCount >= state.maxQuestionsPerPhase;
     // 如果还没提问过，不要进行转移判断
     const transitionData =
       state.questionsAskedCount > 0
-        ? await this.evaluatePhaseTransition(state)
+        ? await this.evaluatePhaseTransition(state, signal)
         : {
             suggestTransition: false,
             discoveredSkills: [] as string[],
@@ -288,7 +270,7 @@ export class InterviewAgentService {
     });
 
     const model = this.aiModelFactory.createDefaultModel();
-    const stream = await model.stream(formattedPrompt);
+    const stream = await model.stream(formattedPrompt, { signal });
     let fullText = '';
 
     for await (const chunk of stream) {
@@ -311,6 +293,7 @@ export class InterviewAgentService {
   private async handleTechAssessment(
     state: any,
     onChunkToken: (t: string) => void,
+    signal?: AbortSignal,
   ): Promise<any> {
     const reachedLimit =
       state.questionsAskedCount >= state.maxQuestionsPerPhase;
@@ -328,14 +311,14 @@ export class InterviewAgentService {
       /\blet\b/.test(lastHumanMsg) ||
       /\bclass\b/.test(lastHumanMsg);
 
-    // 如果有代码，或者还没提问过，不要进行转移判断，确保沙箱执行及追问能够进行
+    // 如果有代码，或者还没提问过，不要进行转移判断，确保围绕代码继续追问
     const transitionData =
       state.questionsAskedCount > 0 && !hasCode
-        ? await this.evaluatePhaseTransition(state)
+        ? await this.evaluatePhaseTransition(state, signal)
         : {
             suggestTransition: false,
             discoveredSkills: [] as string[],
-            reason: '刚进入阶段或有代码待运行验证',
+            reason: '刚进入阶段或有代码待分析',
           };
 
     if (transitionData.suggestTransition || reachedLimit) {
@@ -355,7 +338,7 @@ export class InterviewAgentService {
 已经识别的技能：${state.extractedSkills.join(', ')}
 根据目标岗位与已回答内容，提出一个实际工作情景、方法或取舍问题，不重复已问内容。
 产品、设计、运营等岗位不得强制编程；技术岗位也不必固定使用 JavaScript。优先允许口头解释；只有相关软件岗位且候选人愿意写代码时才提出适合其语言的代码题。
-run_javascript_code 仅用于候选人实际提供的 JavaScript；其他语言不假装已执行。执行结果不等于能力结论，后续可追问边界和验证方法。`;
+当前仅支持代码文本分析，没有隔离代码执行环境。不得运行候选人代码，也不得声称已运行测试；可围绕代码逻辑、边界和验证方法追问。`;
 
     const messages = [
       new SystemMessage(
@@ -364,29 +347,21 @@ run_javascript_code 仅用于候选人实际提供的 JavaScript；其他语言�
       ...state.messages,
     ];
     const model = this.aiModelFactory.createDefaultModel();
-    const sandboxTool = createCodeSandboxTool();
-    const modelWithTools = model.bindTools([sandboxTool]);
 
     this.logger.log(`🤖 调用大模型评估技术考核，消息数: ${messages.length}`);
-    const response = await modelWithTools.invoke(messages);
-
-    if (response.tool_calls && response.tool_calls.length > 0) {
-      return {
-        messages: [response],
-        shouldTransition: false,
-        currentPhase: 'tech_assessment',
-      };
-    }
-
-    const fullText = response.content?.toString() || '';
-    const chunkSize = 5;
-    for (let i = 0; i < fullText.length; i += chunkSize) {
-      onChunkToken(fullText.slice(i, i + chunkSize));
-      await new Promise((r) => setTimeout(r, 20));
+    const stream = await model.stream(messages, { signal });
+    let fullText = '';
+    for await (const chunk of stream) {
+      signal?.throwIfAborted();
+      const content = typeof chunk.content === 'string' ? chunk.content : '';
+      if (content) {
+        fullText += content;
+        onChunkToken(content);
+      }
     }
 
     return {
-      messages: [response],
+      messages: [new AIMessage(fullText)],
       questionsAskedCount: state.questionsAskedCount + 1,
       shouldTransition: false,
       currentPhase: 'tech_assessment',
@@ -396,13 +371,14 @@ run_javascript_code 仅用于候选人实际提供的 JavaScript；其他语言�
   private async handleBehavioralTest(
     state: any,
     onChunkToken: (t: string) => void,
+    signal?: AbortSignal,
   ): Promise<any> {
     const reachedLimit =
       state.questionsAskedCount >= state.maxQuestionsPerPhase;
     // 如果还没提问过，不要进行转移判断
     const transitionData =
       state.questionsAskedCount > 0
-        ? await this.evaluatePhaseTransition(state)
+        ? await this.evaluatePhaseTransition(state, signal)
         : {
             suggestTransition: false,
             discoveredSkills: [] as string[],
@@ -431,7 +407,7 @@ run_javascript_code 仅用于候选人实际提供的 JavaScript；其他语言�
     });
 
     const model = this.aiModelFactory.createDefaultModel();
-    const stream = await model.stream(formattedPrompt);
+    const stream = await model.stream(formattedPrompt, { signal });
     let fullText = '';
 
     for await (const chunk of stream) {
@@ -453,6 +429,7 @@ run_javascript_code 仅用于候选人实际提供的 JavaScript；其他语言�
   private async handleCandidateQA(
     state: any,
     onChunkToken: (t: string) => void,
+    signal?: AbortSignal,
   ): Promise<any> {
     // 如果候选人已经没有问题，准备结束
     const lastUserMessage =
@@ -481,11 +458,7 @@ run_javascript_code 仅用于候选人实际提供的 JavaScript；其他语言�
 
     if (state.questionsAskedCount === 0) {
       const text = `主要问题先聊到这里。关于目标岗位或这次练习，你还有什么想了解的吗？具体公司的薪酬与招聘安排我无法代为确认。`;
-      const chunkSize = 5;
-      for (let i = 0; i < text.length; i += chunkSize) {
-        onChunkToken(text.slice(i, i + chunkSize));
-        await new Promise((r) => setTimeout(r, 20));
-      }
+      onChunkToken(text);
 
       return {
         messages: [new AIMessage(text)],
@@ -514,7 +487,7 @@ run_javascript_code 仅用于候选人实际提供的 JavaScript；其他语言�
     });
 
     const model = this.aiModelFactory.createDefaultModel();
-    const stream = await model.stream(formattedPrompt);
+    const stream = await model.stream(formattedPrompt, { signal });
     let fullText = '';
 
     for await (const chunk of stream) {
@@ -539,11 +512,7 @@ run_javascript_code 仅用于候选人实际提供的 JavaScript；其他语言�
   ): Promise<any> {
     const text = `好的，今天的面试就到这里。非常感谢你的时间和精彩回答。本次为模拟面试，你可以在复盘页查看回答与改进建议。祝你一切顺利！`;
 
-    const chunkSize = 5;
-    for (let i = 0; i < text.length; i += chunkSize) {
-      onChunkToken(text.slice(i, i + chunkSize));
-      await new Promise((r) => setTimeout(r, 20));
-    }
+    onChunkToken(text);
 
     return {
       messages: [new AIMessage(text)],
@@ -552,52 +521,14 @@ run_javascript_code 仅用于候选人实际提供的 JavaScript；其他语言�
     };
   }
 
-  private async handleExecuteTool(
-    state: any,
-    onChunkToken: (t: string) => void,
-  ): Promise<any> {
-    const lastMsg = state.messages[state.messages.length - 1];
-    if (
-      !(lastMsg instanceof AIMessage) ||
-      !lastMsg.tool_calls ||
-      lastMsg.tool_calls.length === 0
-    ) {
-      return {};
-    }
-
-    const toolCalls = lastMsg.tool_calls;
-    const toolMessages: BaseMessage[] = [];
-    const sandboxTool = createCodeSandboxTool();
-
-    for (const toolCall of toolCalls) {
-      if (toolCall.name === 'run_javascript_code') {
-        this.logger.log(
-          `🤖 执行代码沙箱工具，代码长度: ${toolCall.args.code?.length}`,
-        );
-        const result = await sandboxTool.invoke(toolCall.args as any);
-        if (typeof result === 'string') {
-          toolMessages.push(
-            new ToolMessage({
-              content: result,
-              tool_call_id: toolCall.id || '',
-            }),
-          );
-        } else {
-          toolMessages.push(result as any);
-        }
-      }
-    }
-
-    return {
-      messages: toolMessages,
-    };
-  }
-
   // ========================================================
   // 辅助判定函数：评测阶段流转
   // ========================================================
 
-  private async evaluatePhaseTransition(state: any): Promise<PhaseTransition> {
+  private async evaluatePhaseTransition(
+    state: any,
+    signal?: AbortSignal,
+  ): Promise<PhaseTransition> {
     const messages: BaseMessage[] = state.messages;
     const lastHumanIndex = messages
       .map((message) => message._getType())
@@ -646,11 +577,13 @@ run_javascript_code 仅用于候选人实际提供的 JavaScript；其他语言�
           lastMessage: lastHumanMsg.toString(),
           format_instructions: parser.getFormatInstructions(),
         }),
+        { signal },
       );
 
       return result;
-    } catch (error) {
-      this.logger.error(`阶段流转评估决策失败: ${error.message}`);
+    } catch {
+      signal?.throwIfAborted();
+      this.logger.error('阶段流转评估失败，保留当前阶段继续提问');
       // 容错退避，不影响主流程继续提问
       return {
         analysis: '判定失败兜底',
@@ -673,6 +606,7 @@ run_javascript_code 仅用于候选人实际提供的 JavaScript；其他语言�
 
   private async summarizeConversation(
     messages: BaseMessage[],
+    signal?: AbortSignal,
   ): Promise<string> {
     try {
       const model = this.aiModelFactory.createDefaultModel();
@@ -684,10 +618,11 @@ ${historyText}
 
 摘要总结：`;
 
-      const response = await model.invoke(prompt);
+      const response = await model.invoke(prompt, { signal });
       return response.content?.toString() || '（暂无有效摘要）';
-    } catch (err) {
-      this.logger.error(`生成对话历史摘要失败: ${err.message}`);
+    } catch {
+      signal?.throwIfAborted();
+      this.logger.error('对话历史摘要生成失败');
       return '（历史摘要生成失败）';
     }
   }
@@ -711,6 +646,7 @@ ${historyText}
     currentPhase?: any; // 从 session 传入的当前阶段
     questionsAskedCount?: number;
     extractedSkills?: string[];
+    signal?: AbortSignal;
   }): AsyncGenerator<
     string,
     {
@@ -725,6 +661,7 @@ ${historyText}
       };
     }
   > {
+    context.signal?.throwIfAborted();
     const queue = new AsyncQueue<string>();
 
     let messages: BaseMessage[] = context.conversationHistory.map((h) =>
@@ -741,6 +678,7 @@ ${historyText}
       const activeContext = messages.slice(-4);
       const prefixSummaryText = await this.summarizeConversation(
         messages.slice(0, -4),
+        context.signal,
       );
       messages = [
         new SystemMessage(
@@ -774,34 +712,37 @@ ${historyText}
 
     let generatedText = '';
     const onChunkToken = (token: string) => {
+      context.signal?.throwIfAborted();
       generatedText += token;
       queue.push(token);
     };
 
     // 2. 异步拉起 LangGraph 实例运行
-    const graph = this.compileInterviewGraph(onChunkToken);
+    const graph = this.compileInterviewGraph(onChunkToken, context.signal);
 
     let finalState: any = null;
     let graphError: unknown;
     const graphPromise = graph
-      .invoke(stateInput)
+      .invoke(stateInput, { signal: context.signal })
       .then((res) => {
         finalState = res;
         queue.close();
       })
       .catch((err) => {
-        this.logger.error(`LangGraph 执行抛出异常: ${err.message}`, err.stack);
+        if (!context.signal?.aborted) this.logger.error('面试模型执行失败');
         graphError = err;
         queue.close();
       });
 
     // 3. 消费队列并 yield
     for await (const chunk of queue.generator()) {
+      context.signal?.throwIfAborted();
       yield chunk;
     }
 
     // 等待图彻底完成
     await graphPromise;
+    context.signal?.throwIfAborted();
     if (graphError)
       throw graphError instanceof Error
         ? graphError

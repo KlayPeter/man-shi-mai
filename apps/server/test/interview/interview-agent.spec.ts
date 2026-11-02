@@ -2,7 +2,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { InterviewAgentService } from '../../src/interview/services/interview-agent.service';
 import { AIModelFactory } from '../../src/ai/services/ai-model.factory';
-import { AIMessage, HumanMessage } from '@langchain/core/messages';
+import {
+  AIMessage,
+  AIMessageChunk,
+  HumanMessage,
+} from '@langchain/core/messages';
 
 // Mock @langchain/langgraph using a self-contained factory function to avoid Jest hoisting ReferenceErrors
 jest.mock('@langchain/langgraph', () => {
@@ -109,6 +113,133 @@ describe('InterviewAgentService', () => {
     expect(prompt).not.toContain('后续问题');
   });
 
+  const techState = (answer: string) => ({
+    questionsAskedCount: 0,
+    maxQuestionsPerPhase: 2,
+    messages: [new HumanMessage(answer)],
+    extractedSkills: [],
+    positionName: '前端开发工程师',
+    jd: 'React',
+    resumeContent: '',
+    practiceIntensity: 'standard',
+  });
+
+  it('publishes the first technical token before the model finishes and retains the complete question', async () => {
+    let release!: () => void;
+    let firstChunk!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const first = new Promise<void>((resolve) => {
+      firstChunk = resolve;
+    });
+    const stream = jest.fn(async function* () {
+      yield new AIMessageChunk('你如何验证');
+      await gate;
+      yield new AIMessageChunk('这个优化的收益？');
+    });
+    mockAIModelFactory.createDefaultModel.mockReturnValue({ stream });
+    const chunks: string[] = [];
+    let finished = false;
+    const running = service['handleTechAssessment'](
+      techState('我做过列表优化。'),
+      (token) => {
+        chunks.push(token);
+        firstChunk();
+      },
+    ).then((result) => {
+      finished = true;
+      return result;
+    });
+    await first;
+    expect(chunks).toEqual(['你如何验证']);
+    expect(finished).toBe(false);
+    release();
+    const result = await running;
+    expect(chunks.join('')).toBe('你如何验证这个优化的收益？');
+    expect(result.messages[0].content).toBe(chunks.join(''));
+    expect(result.questionsAskedCount).toBe(1);
+  });
+
+  it('analyzes code as text without binding or running execution tools', async () => {
+    const bindTools = jest.fn();
+    const stream = jest.fn(async function* (
+      _messages: import('@langchain/core/messages').BaseMessage[],
+    ) {
+      yield new AIMessageChunk('这个实现如何处理空数组？');
+    });
+    mockAIModelFactory.createDefaultModel.mockReturnValue({
+      stream,
+      bindTools,
+    });
+    const result = await service['handleTechAssessment'](
+      techState('```js\nconst result = [1, 2].map(x => x * 2);\n```'),
+      () => undefined,
+    );
+    expect(bindTools).not.toHaveBeenCalled();
+    expect(stream.mock.calls[0][0][0].content).toContain('不得运行候选人代码');
+    expect(result.messages[0].content).toContain('空数组');
+  });
+
+  it('passes cancellation to the technical stream and does not finish a cancelled question', async () => {
+    const controller = new AbortController();
+    let started!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const stream = jest.fn(async function* (
+      _messages: unknown,
+      options: { signal?: AbortSignal },
+    ) {
+      started();
+      await new Promise<void>((_resolve, reject) =>
+        options.signal?.addEventListener(
+          'abort',
+          () =>
+            reject(
+              options.signal?.reason instanceof Error
+                ? options.signal.reason
+                : new Error('stream cancelled'),
+            ),
+          { once: true },
+        ),
+      );
+      yield new AIMessageChunk('不应出现');
+    });
+    mockAIModelFactory.createDefaultModel.mockReturnValue({ stream });
+    const onChunk = jest.fn();
+    const running = service['handleTechAssessment'](
+      techState('我做过列表优化。'),
+      onChunk,
+      controller.signal,
+    );
+    await ready;
+    controller.abort(new Error('synthetic cancellation'));
+    await expect(running).rejects.toThrow('synthetic cancellation');
+    expect(onChunk).not.toHaveBeenCalled();
+  });
+
+  it('does not swallow cancellation as a successful phase judgement', async () => {
+    const controller = new AbortController();
+    controller.abort(new Error('cancel judgement'));
+    mockAIModelFactory.createDefaultModel.mockReturnValue({
+      pipe: () => ({
+        invoke: jest.fn().mockRejectedValue(controller.signal.reason),
+      }),
+    });
+    await expect(
+      service['evaluatePhaseTransition'](
+        {
+          currentPhase: 'tech_assessment',
+          jd: '',
+          resumeContent: '',
+          messages: [new AIMessage('问题'), new HumanMessage('回答')],
+        },
+        controller.signal,
+      ),
+    ).rejects.toThrow('cancel judgement');
+  });
+
   describe('generateInterviewQuestionStream', () => {
     it('passes the chosen phase limit into the graph', async () => {
       const seen: {
@@ -162,6 +293,30 @@ describe('InterviewAgentService', () => {
         ['challenge', 3, 'resume_digging'],
       ]);
     });
+    it('discards already buffered tokens when the request is cancelled', async () => {
+      Object.defineProperty(service, 'compileInterviewGraph', {
+        value: (onChunk: (text: string) => void) => ({
+          invoke: async () => {
+            onChunk('第一段');
+            onChunk('不应再发送的第二段');
+            return { currentPhase: 'tech_assessment' };
+          },
+        }),
+      });
+      const controller = new AbortController();
+      const generator = service.generateInterviewQuestionStream({
+        interviewType: 'special',
+        resumeContent: '',
+        conversationHistory: [],
+        elapsedMinutes: 0,
+        targetDuration: 30,
+        signal: controller.signal,
+      });
+      expect((await generator.next()).value).toBe('第一段');
+      controller.abort(new Error('cancel buffered output'));
+      await expect(generator.next()).rejects.toThrow('cancel buffered output');
+    });
+
     it('propagates graph errors after partial output instead of returning a successful turn', async () => {
       Object.defineProperty(service, 'compileInterviewGraph', {
         value: (onChunk: (text: string) => void) => ({

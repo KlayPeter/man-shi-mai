@@ -199,3 +199,9 @@ flowchart LR
 新生成报告使用 `interview-rubric-v2`：模型输出每条非空回答的四维度证据等级，`scoreAssessment` 校验原文与完整覆盖，再按固定锚点及专项／综合权重计算单题分和总分。候选人反问／流程对话不计分，未观察维度不按零分计入；90 分起为优秀。原理题不强求 STAR 或可核验业绩。
 
 `InterviewReportService` 保存并返回逐题分数、维度、非计分原因和评分覆盖度；旧报告保持可读，无批量回填。`DocumentParserModule` 供面试与本地上传共同使用。方法来源、数学规则和验收入口见[评分与本地上传说明](../../../../docs/interview-scoring-and-local-upload.md)。
+
+## 流式生成与执行边界
+
+专业考察已统一为真实模型 stream；固定模板不再添加打字等待。90 秒生成超时会传递 AbortSignal 到图、摘要、裁判与模型，取消后已缓冲 token 也不再返回。旧任务仍受 active 与数据库租约拦截；断开 SSE 不自动撤销已授权的业务回合。
+
+代码题只做文本分析。原本机 Node 子进程执行工具及图中的 execute_tool 节点已移除，不能宣称运行测试成功；后续执行能力需要独立隔离服务。图和验证入口见[执行流程](agent_execution_workflow.md)。

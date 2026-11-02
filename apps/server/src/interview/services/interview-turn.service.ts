@@ -294,7 +294,9 @@ export class InterviewTurnService {
     events: Subject<MockInterviewEventDto>,
     requestId: string,
   ) {
+    const controller = new AbortController();
     const generator = this.agent.generateInterviewQuestionStream({
+      signal: controller.signal,
       interviewType:
         session.interviewType === 'special' ? 'special' : 'comprehensive',
       resumeContent: session.resumeContent,
@@ -338,19 +340,20 @@ export class InterviewTurnService {
       return await Promise.race([
         generation,
         new Promise<never>((_, reject) => {
-          timer = setTimeout(
-            () =>
-              reject(
-                new ServiceUnavailableException('生成超时，草稿已保留，请重试'),
-              ),
-            GENERATION_MS,
-          );
+          timer = setTimeout(() => {
+            const error = new ServiceUnavailableException(
+              '生成超时，草稿已保留，请重试',
+            );
+            controller.abort(error);
+            reject(error);
+          }, GENERATION_MS);
         }),
       ]);
     } finally {
       active = false;
       clearTimeout(timer);
-      // 不等待不可中断的上游；迟到内容不会再推送或落库。供应商取消另行接入。
+      controller.abort();
+      // 不等待忽略取消的上游；迟到内容仍由 active 和写入租约拦截。
       void generator
         .return({ question: '', shouldEnd: false })
         .catch(() => undefined);

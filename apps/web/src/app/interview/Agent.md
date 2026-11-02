@@ -56,7 +56,7 @@ flowchart LR
 - `InterviewRecorder` 独占单次设备生命周期；处理延迟授权后的取消、正常停止、录音错误和卸载，清理 track、AudioContext、RAF 与计时器。波形来自实际音量，不使用伪造循环动画。音量分析失败不阻断录音。
 - 后端优先使用已配置的百炼 Paraformer，否则使用百度；浏览器仍是分段录音提交，非实时双工。单段 55 秒、最多 4 MB，支持追加多段；此限制不代替后端校验。
 - 转写使用统一 HTTP 客户端与 30 秒超时；FileReader 被真正 await，取消时不再覆盖当前草稿。浏览器取消请求不等于服务商已经中止处理或计费。
-- 面试官朗读按 `synthesisAvailable` 使用后端 Sambert WAV 或浏览器 TTS，并显示来源。云端失败显示可重听错误，不静默重试；长句拆分至服务端限制内，单队列播放。录音前、静音、结束和卸载取消请求、停止音频并释放对象 URL，过期响应不得播放。停止朗读仅停止声音，不跳题。
+- 面试官朗读按 `synthesisAvailable` 使用后端 Sambert WAV 或浏览器 TTS，并显示来源。云端失败显示可重听错误，不静默重试；长句拆分至服务端限制内，单队列播放；当前句播放时最多预取下一句，音频按顺序消费。预取失败先让当前句播完，到对应句时显示重听错误；停止、静音、录音、换账户或卸载均取消预取，迟到音频不得进入新问题。预取的一句可能已产生供应商用量，即使随后停止。录音前、静音、结束和卸载取消请求、停止音频并释放对象 URL，过期响应不得播放。停止朗读仅停止声音，不跳题。
 - `test/interview/cloud-speech.spec.tsx` 验证顺序播放、取消及失败；`e2e/speech-playback.spec.ts` 用本地合成 WAV 验证手机/桌面实际媒体播放和错误提示，不调用供应商。
 - `test/interview` 与 `test/api/interview-speech.spec.ts` 验证异步边界；`e2e/voice-input.spec.ts` 用 Chromium 原生 MediaRecorder 与合成麦克风验证界面，ASR/面试接口 Mock，不代表真实语音服务及恢复会话已验收。
 

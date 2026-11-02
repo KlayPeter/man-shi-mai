@@ -19,6 +19,7 @@ export const useSpeechSynthesis = () => {
   const active = useRef<SpeechSynthesisUtterance | null>(null)
   const audio = useRef<{ player: HTMLAudioElement; url: string } | null>(null)
   const request = useRef<AbortController | null>(null)
+  const prepared = useRef<{ text: string; controller: AbortController; promise: Promise<Blob | null> } | null>(null)
   const generation = useRef(0)
 
   const disposeAudio = useCallback(() => {
@@ -32,28 +33,46 @@ export const useSpeechSynthesis = () => {
     generation.current++
     queue.current = []; fragment.current = ''; spoken.current.clear()
     request.current?.abort(); request.current = null
+    prepared.current?.controller.abort(); prepared.current = null
     disposeAudio()
-    if (active.current) { active.current.onstart = null; active.current.onend = null; active.current.onerror = null }
+    if (active.current) {
+      active.current.onstart = null; active.current.onend = null; active.current.onerror = null
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel()
+    }
     active.current = null
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel()
     if (mounted.current) { setIsSpeaking(false); setError('') }
   }, [disposeAudio])
 
+  const prefetchNext = useCallback(() => {
+    const text = queue.current[0]
+    if (!mounted.current || !enabled.current || !cloud.current || !audio.current || checking.current || prepared.current || !text) return
+    const controller = new AbortController()
+    prepared.current = { text, controller, promise: synthesizeInterviewSpeech(text, controller.signal).catch(() => null) }
+  }, [])
+
   const processQueue = useCallback(function next() {
-    if (!mounted.current || !enabled.current || checking.current || active.current || audio.current || request.current) return
+    if (!mounted.current || !enabled.current || checking.current) return
+    if (audio.current) { prefetchNext(); return }
+    if (active.current || request.current) return
     const sentence = queue.current.shift()
     if (!sentence) { setIsSpeaking(false); return }
     const id = generation.current
     const fail = () => {
       if (!mounted.current || generation.current !== id) return
-      request.current = null; active.current = null; disposeAudio(); queue.current = []
-      setIsSpeaking(false); setError('朗读未完成，请点击重听；也可以直接阅读问题。')
+      stop()
+      setError('朗读未完成，请点击重听；也可以直接阅读问题。')
     }
     if (cloud.current) {
-      const controller = new AbortController(); request.current = controller
+      const cached = prepared.current
+      prepared.current = null
+      if (cached && cached.text !== sentence) cached.controller.abort()
+      const controller = cached?.text === sentence ? cached.controller : new AbortController()
+      request.current = controller
       setIsSpeaking(true)
-      void synthesizeInterviewSpeech(sentence, controller.signal).then(blob => {
+      const synthesis = cached?.text === sentence ? cached.promise : synthesizeInterviewSpeech(sentence, controller.signal)
+      void synthesis.then(blob => {
         if (!mounted.current || generation.current !== id || controller.signal.aborted) return
+        if (!blob) { fail(); return }
         request.current = null
         const url = URL.createObjectURL(blob)
         const player = new Audio(url)
@@ -63,7 +82,9 @@ export const useSpeechSynthesis = () => {
           disposeAudio(); next()
         }
         player.onerror = fail
-        return player.play()
+        const playing = player.play()
+        prefetchNext()
+        return playing
       }).catch(() => {
         if (!controller.signal.aborted) fail()
       })
@@ -84,7 +105,7 @@ export const useSpeechSynthesis = () => {
       utterance.onerror = fail
       window.speechSynthesis.speak(utterance)
     } catch { fail() }
-  }, [disposeAudio])
+  }, [disposeAudio, prefetchNext, stop])
 
   useEffect(() => {
     mounted.current = true

@@ -206,6 +206,10 @@ describe('persistent interview turns', () => {
       await jest.advanceTimersByTimeAsync(90001);
       const events = await running;
       expect(events.at(-1)?.error).toContain('超时');
+      const signal: AbortSignal =
+        agent.generateInterviewQuestionStream.mock.calls[0][0].signal;
+      expect(signal.aborted).toBe(true);
+      expect(signal.reason.message).toContain('生成超时');
       release();
       await jest.advanceTimersByTimeAsync(0);
       expect(db.findOneAndUpdate).toHaveBeenCalledTimes(1);

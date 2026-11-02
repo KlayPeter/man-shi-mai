@@ -67,6 +67,49 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   }
   const run = (instance, request) => lastValueFrom(instance.answer(userId, request).pipe(toArray()));
   try {
+    // Exercise the real graph and technical node through a gated SDK stream.
+    const { InterviewAgentService } = require('../../dist/src/interview/services/interview-agent.service');
+    const { AIMessageChunk } = require('@langchain/core/messages');
+    let releaseStream;
+    const streamGate = new Promise(resolve => { releaseStream = resolve; });
+    let streamCalls = 0;
+    const streamingAgent = new InterviewAgentService(new ConfigService({}), { createDefaultModel: () => ({
+      async *stream(_messages, options) {
+        streamCalls++; assert(options.signal instanceof AbortSignal);
+        yield new AIMessageChunk('请解释缓存');
+        await streamGate;
+        options.signal.throwIfAborted();
+        yield new AIMessageChunk('如何失效？');
+      },
+    }) });
+    service = new InterviewTurnService(results, streamingAgent);
+    const streamed = await seed(), streamedBody = body(streamed);
+    await results.updateOne({ resultId: streamed.resultId }, { $set: { 'sessionState.currentPhase': 'tech_assessment', 'sessionState.questionsAskedCount': 0 } });
+    const proxy = process.env.TEST_PROXY_BASE;
+    if (proxy) assert(['127.0.0.1', 'localhost'].includes(new URL(proxy).hostname));
+    const target = proxy ? `${proxy}/api/sse-proxy?path=${encodeURIComponent('/interview/mock/answer')}` : `${base}/answer`;
+    let received = '';
+    const streamResponse = await fetch(target, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(streamedBody), signal: AbortSignal.timeout(20000) });
+    assert.equal(streamResponse.status, 200);
+    const reader = streamResponse.body.getReader(), decoder = new TextDecoder();
+    try {
+      while (!received.includes('请解释缓存')) {
+        const part = await reader.read(); assert(!part.done, 'SSE closed before the first token');
+        received += decoder.decode(part.value, { stream: true });
+      }
+      assert(!received.includes('waiting'), 'A partial question must not be acknowledged');
+      assert.equal((await results.findOne({ resultId: streamed.resultId })).qaList.length, 1);
+    } finally { releaseStream(); }
+    for (;;) { const part = await reader.read(); if (part.done) break; received += decoder.decode(part.value, { stream: true }); }
+    const streamEvents = received.split('\n').filter(line => line.startsWith('data: ')).map(line => JSON.parse(line.slice(6)));
+    assert.equal(streamEvents.at(-1).type, 'waiting');
+    assert.equal(streamEvents.filter(event => event.type === 'question').at(-1).content, '请解释缓存如何失效？');
+    assert.equal((await results.findOne({ resultId: streamed.resultId })).qaList.at(-1).question, '请解释缓存如何失效？');
+    assert.equal((await http('answer', streamedBody)).events.at(-1).type, 'waiting');
+    assert.equal(streamCalls, 1, 'Replaying the committed question must not call the SDK again');
+    service = new InterviewTurnService(results, agent);
+    console.log(`PASS: real technical node first token before completion; ${proxy ? 'Next proxy + ' : ''}HTTP/SSE; commit acknowledgement; persisted complete question; no model on replay.`);
+
     const first = await seed(), request = body(first);
     assert.equal((await http('answer', request, null)).status, 401);
     assert.equal((await http('answer', { ...request, requestId: undefined })).status, 400);

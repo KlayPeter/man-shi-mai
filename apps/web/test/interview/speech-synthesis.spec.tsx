@@ -23,7 +23,30 @@ describe('interviewer speech', () => {
     await act(async () => staleHandler('不应该播放。', true))
     expect(spoken).toHaveLength(2)
     await act(async () => root.unmount())
-    expect(cancel).toHaveBeenCalledTimes(2)
+    expect(cancel).toHaveBeenCalledTimes(1)
     vi.unstubAllGlobals()
   })
+  it('does not cancel another component speech when an idle preview unmounts', async () => {
+    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+    const cancel = vi.fn()
+    vi.stubGlobal('speechSynthesis', { speak: vi.fn(), cancel, getVoices: () => [] })
+    vi.stubGlobal('SpeechSynthesisUtterance', class { constructor(public text: string) {} })
+    let active!: ReturnType<typeof useSpeechSynthesis>
+    function Active() { active = useSpeechSynthesis(); return null }
+    function Idle() { useSpeechSynthesis(); return null }
+    const activeRoot = createRoot(document.createElement('div'))
+    const idleRoot = createRoot(document.createElement('div'))
+    try {
+      await act(async () => { activeRoot.render(<Active />); idleRoot.render(<Idle />) })
+      await act(async () => active.handleStreamText('正在进行的面试。', true))
+      await act(async () => idleRoot.unmount())
+      expect(cancel).not.toHaveBeenCalled()
+      await act(async () => activeRoot.unmount())
+      expect(cancel).toHaveBeenCalledTimes(1)
+    } finally {
+      await act(async () => { idleRoot.unmount(); activeRoot.unmount() })
+      vi.unstubAllGlobals()
+    }
+  })
+
 })
