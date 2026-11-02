@@ -526,7 +526,7 @@ export class InterviewAIService {
     signal?: AbortSignal,
   ): Promise<AssessmentOutput> {
     const prompt = PromptTemplate.fromTemplate(buildAssessmentPrompt(context));
-    const model = this.aiModelFactory.createDefaultModel();
+    const model = this.aiModelFactory.createAssessmentModel();
     const chain = prompt.pipe(model).pipe(new JsonOutputParser());
     const result: unknown = await chain.invoke(
       {

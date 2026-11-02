@@ -46,6 +46,7 @@ export class AIModelFactory {
    * - DEEPSEEK_MODEL：模型名称（默认 deepseek-flash）
    * - DEEPSEEK_TEMPERATURE：温度参数（控制随机性）
    * - MAX_TOKENS：最大 Token 数
+   * - DEEPSEEK_THINKING_MODE：默认 disabled，以满足交互时延与输出预算
    */
   createDefaultModel() {
     const apiKey = this.configService.get<string>('DEEPSEEK_API_KEY');
@@ -62,7 +63,25 @@ export class AIModelFactory {
         this.configService.get<string>('DEEPSEEK_MODEL') || 'deepseek-flash',
       temperature: configuredTemperature ?? 0.7,
       maxTokens: this.configService.get<number>('MAX_TOKENS') ?? 4000,
+      modelKwargs: {
+        thinking: {
+          type:
+            this.configService.get<string>('DEEPSEEK_THINKING_MODE') ||
+            'disabled',
+        },
+      },
     });
+  }
+
+  /** 结构化复盘需要完整 JSON；关闭默认思考，避免预算耗在 reasoning_content 上。 */
+  createAssessmentModel(): ChatDeepSeek {
+    const model = this.createDefaultModel();
+    model.modelKwargs = {
+      ...model.modelKwargs,
+      thinking: { type: 'disabled' },
+    };
+    model.temperature = 0.3;
+    return model;
   }
 
   // 创建用于稳定输出的环境（评估场景）
@@ -72,6 +91,7 @@ export class AIModelFactory {
     return new ChatDeepSeek({
       apiKey: this.configService.get<string>('DEEPSEEK_API_KEY') || '',
       model: baseModel.model,
+      modelKwargs: baseModel.modelKwargs,
       temperature: 0.3,
       maxTokens: 4000,
     });
@@ -88,6 +108,7 @@ export class AIModelFactory {
     return new ChatDeepSeek({
       apiKey: this.configService.get<string>('DEEPSEEK_API_KEY') || '',
       model: baseModel.model,
+      modelKwargs: baseModel.modelKwargs,
       temperature: 0.9,
       maxTokens: 4000,
     });

@@ -32,6 +32,9 @@ export const configValidationSchema = Joi.object({
     }),
   DEEPSEEK_MODEL: Joi.string().default('deepseek-flash'),
   DEEPSEEK_TEMPERATURE: Joi.number().min(0).max(2).default(0.7),
+  DEEPSEEK_THINKING_MODE: Joi.string()
+    .valid('enabled', 'disabled')
+    .default('disabled'),
   PAYMENT_MODE: Joi.string().valid('disabled', 'virtual').default('disabled'),
   MAX_TOKENS: Joi.number().integer().min(1).default(4000),
   DASHSCOPE_API_KEY: Joi.string().trim().allow('').optional(),

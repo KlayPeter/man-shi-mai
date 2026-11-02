@@ -32,6 +32,8 @@ pnpm hooks:install
 
 编辑后端配置中的数据库地址、JWT 密钥和需要使用的 AI / OSS / 支付服务凭据。示例值只是占位符；AI 和第三方服务需要有效凭据才能工作。
 
+`DEEPSEEK_THINKING_MODE` 默认 `disabled`，避免交互追问长时间思考。可显式设为 `enabled` 用于另行评测；结构化模拟面试复盘始终关闭思考模式，避免有限输出预算被思考 Token 耗尽而没有返回 JSON。
+
 语音可配置北京地域的 `DASHSCOPE_API_KEY`：回答使用 `paraformer-realtime-v2` 转写，面试官使用 `DASHSCOPE_TTS_MODEL`（默认 `sambert-zhida-v1`）朗读。密钥仅放后端；在百炼控制台开通模型权限并按需开启“免费额度用完即停”。额度属于具体模型，`paraformer-v2` 文件识别额度不等于实时版额度。未配置百炼时可沿用百度识别与浏览器朗读；供应商调用失败不会自动换模型重试。
 
 充值默认关闭（`PAYMENT_MODE=disabled`）。仅开发/测试环境可设为 `virtual` 验证每账户一次的模拟发放，不产生真实交易；生产环境始终拒绝模拟发放。正式支付宝/微信支付尚未接入，不可用模拟测试代替真实支付验收。
