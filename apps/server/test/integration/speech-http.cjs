@@ -15,6 +15,7 @@ const { InterviewService } = require('../../dist/src/interview/services/intervie
 const { InterviewReportService } = require('../../dist/src/interview/services/interview-report.service');
 const { InterviewSpeechService } = require('../../dist/src/interview/services/interview-speech.service');
 const { AudioTranscoderService } = require('../../dist/src/interview/services/audio-transcoder.service');
+const { DashscopeSpeechService } = require('../../dist/src/interview/services/dashscope-speech.service');
 const { BaiduSpeechService } = require('../../dist/src/interview/services/baidu-speech.service');
 const { JwtStrategy } = require('../../dist/src/auth/jwt.strategy');
 const { JwtAuthGuard } = require('../../dist/src/auth/jwt-auth.guard');
@@ -23,9 +24,10 @@ if (process.env.RUN_LOCAL_INTEGRATION !== '1') throw new Error('Explicit local i
 (async () => {
   const dir = await mkdtemp(join(tmpdir(), 'msm-audio-fixture-'));
   const before = new Set((await readdir(tmpdir())).filter(name => name.startsWith('msm-speech-')));
-  const provider = { calls: 0, assertConfigured() {}, async recognize(pcm, userId) { assert(pcm.length >= 3200 && pcm.length <= 1920000); assert(userId.startsWith('speech-local')); this.calls++; return '合成音频已经完成本地转码'; } };
+  const provider = { calls: 0, isConfigured() { return true; }, assertConfigured() {}, async recognize(pcm, userId) { assert(pcm.length >= 3200 && pcm.length <= 1920000); assert(userId.startsWith('speech-local')); this.calls++; return '合成音频已经完成本地转码'; } };
   const module = await Test.createTestingModule({ imports: [PassportModule.register({ defaultStrategy: 'jwt' })], controllers: [InterviewController], providers: [
     InterviewSpeechService, AudioTranscoderService, JwtStrategy, JwtAuthGuard,
+    { provide: DashscopeSpeechService, useValue: { isConfigured: () => false } },
     { provide: InterviewService, useValue: {} }, { provide: InterviewReportService, useValue: {} },
     { provide: BaiduSpeechService, useValue: provider }, { provide: ConfigService, useValue: new ConfigService({ JWT_SECRET: 'speech-local-test-secret' }) },
   ] }).compile();

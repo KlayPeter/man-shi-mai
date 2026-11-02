@@ -1,13 +1,25 @@
 import { describe, it, expect, vi } from 'vitest'
 const http = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
 vi.mock('@/lib/request', () => ({ default: http }))
-import { audioToBase64, isInterviewSpeechConfigured, transcribeInterviewAudio, speechFailureMessage } from '@/api/interview-speech'
+import { audioToBase64, isInterviewSpeechConfigured, isInterviewSynthesisConfigured, synthesizeInterviewSpeech, transcribeInterviewAudio, speechFailureMessage } from '@/api/interview-speech'
 
 it('uses the authenticated request client to check speech configuration', async () => {
   http.get.mockResolvedValueOnce({ available: true }).mockResolvedValueOnce({ available: false })
   await expect(isInterviewSpeechConfigured()).resolves.toBe(true)
   await expect(isInterviewSpeechConfigured()).resolves.toBe(false)
   expect(http.get).toHaveBeenCalledWith('/interview/speech/status', { signal: undefined })
+})
+
+it('checks the cloud playback capability and downloads cancellable audio', async () => {
+  http.get.mockResolvedValueOnce({ available: true, synthesisAvailable: true })
+  await expect(isInterviewSynthesisConfigured()).resolves.toBe(true)
+  const blob = new Blob([new Uint8Array(100)], { type: 'audio/wav' })
+  http.post.mockResolvedValueOnce(blob)
+  const controller = new AbortController()
+  await expect(synthesizeInterviewSpeech('你好', controller.signal)).resolves.toBe(blob)
+  expect(http.post).toHaveBeenLastCalledWith('/interview/speech/synthesize', { text: '你好' }, { signal: controller.signal, timeout: 25000, responseType: 'blob' })
+  http.post.mockResolvedValueOnce(new Blob(['error'], { type: 'application/json' }))
+  await expect(synthesizeInterviewSpeech('你好', controller.signal)).rejects.toThrow('音频无效')
 })
 
 describe('speech upload boundary', () => {

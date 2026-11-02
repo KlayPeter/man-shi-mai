@@ -4,6 +4,7 @@ import { InterviewTurnService } from './services/interview-turn.service';
 import { AudioTranscoderService } from './services/audio-transcoder.service';
 import { BaiduSpeechService } from './services/baidu-speech.service';
 import { InterviewSpeechService } from './services/interview-speech.service';
+import { DashscopeSpeechService } from './services/dashscope-speech.service';
 import { Module } from '@nestjs/common';
 import { InterviewReportService } from './services/interview-report.service';
 import { InterviewQuizService } from './services/interview-quiz.service';
@@ -56,6 +57,7 @@ import {
   providers: [
     AudioTranscoderService,
     BaiduSpeechService,
+    DashscopeSpeechService,
     InterviewSpeechService,
     InterviewReportService,
     InterviewQuizService,

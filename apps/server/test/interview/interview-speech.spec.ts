@@ -7,6 +7,7 @@ import {
 import { InterviewSpeechService } from '../../src/interview/services/interview-speech.service';
 import { AudioTranscoderService } from '../../src/interview/services/audio-transcoder.service';
 import { BaiduSpeechService } from '../../src/interview/services/baidu-speech.service';
+import { DashscopeSpeechService } from '../../src/interview/services/dashscope-speech.service';
 
 describe('speech request boundary', () => {
   const audio = { toPcm: jest.fn() };
@@ -14,6 +15,11 @@ describe('speech request boundary', () => {
     isConfigured: jest.fn(),
     assertConfigured: jest.fn(),
     recognize: jest.fn(),
+  };
+  const dashscope = {
+    isConfigured: jest.fn(),
+    recognize: jest.fn(),
+    synthesize: jest.fn(),
   };
   let service: InterviewSpeechService;
   const input = Buffer.from('synthetic-input').toString('base64');
@@ -27,15 +33,59 @@ describe('speech request boundary', () => {
         InterviewSpeechService,
         { provide: AudioTranscoderService, useValue: audio },
         { provide: BaiduSpeechService, useValue: provider },
+        { provide: DashscopeSpeechService, useValue: dashscope },
       ],
     }).compile();
     service = module.get(InterviewSpeechService);
+  });
+  it('prefers configured DashScope without retrying a failed call through Baidu', async () => {
+    dashscope.isConfigured.mockReturnValue(true);
+    dashscope.recognize.mockResolvedValueOnce('百炼识别');
+    await expect(service.transcribe('u', input)).resolves.toBe('百炼识别');
+    dashscope.recognize.mockRejectedValueOnce(
+      new Error('provider unavailable'),
+    );
+    await expect(service.transcribe('u', input)).rejects.toThrow(
+      'provider unavailable',
+    );
+    expect(provider.recognize).not.toHaveBeenCalled();
   });
   it('reports configuration without contacting or charging the provider', () => {
     expect(service.isConfigured()).toBe(true);
     provider.isConfigured.mockReturnValue(false);
     expect(service.isConfigured()).toBe(false);
     expect(provider.recognize).not.toHaveBeenCalled();
+  });
+  it('bounds synthesis, forwards cancellation and releases a failed request slot', async () => {
+    dashscope.isConfigured.mockReturnValue(true);
+    let fail!: (error: Error) => void;
+    dashscope.synthesize.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          fail = reject;
+        }),
+    );
+    const controller = new AbortController();
+    const first = service.synthesize('u', '你好', controller.signal);
+    const rejected = expect(first).rejects.toThrow('unavailable');
+    await expect(service.synthesize('u', '重复请求')).rejects.toMatchObject({
+      status: 429,
+    });
+    fail(new Error('unavailable'));
+    await rejected;
+    dashscope.synthesize.mockResolvedValueOnce(Buffer.from('audio'));
+    await expect(
+      service.synthesize('u', '你好', controller.signal),
+    ).resolves.toEqual(Buffer.from('audio'));
+    expect(dashscope.synthesize).toHaveBeenLastCalledWith(
+      '你好',
+      controller.signal,
+    );
+    const calls = dashscope.synthesize.mock.calls.length;
+    await expect(service.synthesize('u', ' ')).rejects.toMatchObject({
+      status: 400,
+    });
+    expect(dashscope.synthesize).toHaveBeenCalledTimes(calls);
   });
   it('validates real DTO and preserves only audio', async () => {
     const pipe = new ValidationPipe({ transform: true, whitelist: true });

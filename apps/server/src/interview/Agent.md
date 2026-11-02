@@ -124,21 +124,22 @@ flowchart TD
 flowchart LR
     A[鉴权与音频 DTO] --> B[单用户与实例限流]
     B --> C[限定格式转为 PCM]
-    C --> D[百度 HTTPS 识别]
+    C --> D[百炼 WebSocket 或百度 HTTPS 识别]
     D --> E[文本或明确错误]
     C --> F[清理临时文件]
 ```
 
-`POST /interview/speech-to-text` 由 `InterviewSpeechService` 编排，`AudioTranscoderService` 使用随包 ffmpeg，`BaiduSpeechService` 管理 HTTPS Token 与识别请求；不再放在面试主服务中。请求保留 `{ audio: Base64 }`，返回 `{ text }`。
+`POST /interview/speech-to-text` 由 `InterviewSpeechService` 编排，`AudioTranscoderService` 使用随包 ffmpeg。配置 `DASHSCOPE_API_KEY` 时使用 `DashscopeSpeechService` 的 `paraformer-realtime-v2`，否则沿用百度识别。请求保留 `{ audio: Base64 }`，返回 `{ text }`；供应商失败不自动跨模型重试。
 
-`GET /interview/speech/status` 受 JWT 保护，只返回语音识别凭据是否已配置；不请求供应商，也不保证其实时可用。候场与恢复面试的回答区都用此状态决定是否提供录音入口。面试 SSE 不自行写入通配 `Access-Control-Allow-Origin`，跨域策略由全局 CORS 配置决定。
+`GET /interview/speech/status` 受 JWT 保护，返回 `available`（识别已配置）与 `synthesisAvailable`（云端朗读已配置）。不请求供应商，不保证其实时可用；旧消费者可忽略新增字段。`POST /interview/speech/synthesize` 接收 `{ text }`，校验非空且不超过 500 字符，返回 `audio/wav`，不经过 JSON 响应包装。百炼 Sambert 音色由 `DASHSCOPE_TTS_MODEL` 指定，默认 `sambert-zhida-v1`，不接受浏览器指定模型或外部 URL。接口均沿用全局 CORS，禁止自行添加通配跨域。
 
 - Base64 解码前后检查，文件最大 4 MB；仅 WebM、Ogg、M4A/MP4、WAV 容器。禁止播放列表及网络协议输入；格式识别不代替 ffmpeg 解码有效性检查。
 - 转为 16kHz、单声道、16-bit PCM；按解码后的字节数拒绝超过 60 秒音频，不截断后冒充完整答案。ffmpeg 最长 8 秒、输出有上限，超时杀进程并等待退出；各路径清理独立临时目录。
-- 同用户一次一个请求、每分钟最多 8 次；每个服务进程最多 4 个并发。限流为内存级，重启会重置，多实例需在网关或共享存储增加总量限制，不声称已具备集群配额。
-- `BAIDU_API_KEY` 与 `BAIDU_SECRET_KEY` 缺失返回 503；不再依赖 SDK 的 APP_ID 参数。Token 获取超时 5 秒、识别超时 12 秒，均禁止重定向，不自动重试付费识别。
+- 同用户识别每分钟最多 8 次、合成最多 30 次，各自一次一个请求；共享每进程 4 个并发上限。限流为内存级，重启重置，多实例仍需共享限流。合成最多返回 2 MB 音频。
+- 百炼通过固定北京地域 WSS 端点调用，握手 5 秒、任务 20 秒超时；取消、失败、超时和完成均关闭连接。识别只保存最终句并按开始时间去重排序；任务未完成不返回部分成功。取消连接不保证供应商立即停算。百度备用路径仍要求 `BAIDU_API_KEY` 与 `BAIDU_SECRET_KEY`，Token 5 秒、识别 12 秒，不自动重试。
 - 400 为无效录音，422 为无清晰语音，429 为用户限流，502/503/504 为上游异常、不可用或超时。浏览器保留录音与文字并提供重试。只返回经过映射的错误，不返回原始上游消息、凭据、音频或临时路径。
 - `test/integration/speech-http.cjs` 以真实 Controller/JWT/DTO/ffmpeg 和 Stub 供应商验证四种编码、超长、损坏、字段注入及临时清理；`speech-local.spec.ts` 额外验证浏览器真实录音经 Next 代理到转码。实际百度识别质量另行验收。
+- `test/interview/dashscope-speech.spec.ts` 使用本地 WebSocket 服务验证协议、最终句去重、失败和取消。`test/integration/dashscope-live.cjs` 需显式 `RUN_DASHSCOPE_LIVE=1`、密钥和编译产物，仅向百炼发送一句固定测试文本及其合成音频，验证真实鉴权/DTO/HTTP/转码。可设置回环地址 `TEST_API_BASE` 验证 Next 代理；不连接 MongoDB，也不验证整场面试模型质量。
 
 ## 持久化回合与恢复
 

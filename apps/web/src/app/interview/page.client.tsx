@@ -1241,7 +1241,7 @@ export default function InterviewPageContent() {
               title={speechSynthesis.isEnabled ? '关闭语音' : '开启语音'}
             >
               <Icon name={speechSynthesis.isEnabled ? 'i-heroicons-speaker-wave' : 'i-heroicons-speaker-x-mark'} className="w-3.5 h-3.5" />
-              {!speechSynthesis.isSupported ? '朗读不可用' : speechSynthesis.isEnabled ? '朗读开启' : '朗读关闭'}
+              {!speechSynthesis.isSupported ? '朗读不可用' : speechSynthesis.isEnabled ? `${speechSynthesis.source === 'cloud' ? '云端' : '浏览器'}朗读` : '朗读关闭'}
             </button>
             {(isStreaming || interviewStatus === 'in_progress') && !isEnded && (
               <button
@@ -1257,6 +1257,7 @@ export default function InterviewPageContent() {
               </button>
             )}
             {!isEnded && !interviewStore.pendingStart && <>
+              {speechSynthesis.error && <span role="alert" className="text-xs text-red-700">{speechSynthesis.error}</span>}
               <button type="button" disabled={isStreaming || isRecovering || !sessionId} onClick={interviewStatus === 'suspend' ? handleRestoreInterview : pauseInterview} className="min-h-11 rounded-lg border border-line px-3 text-xs text-muted disabled:opacity-50">{interviewStatus === 'suspend' ? '继续面试' : '暂停面试'}</button>
               <button type="button" disabled={isStreaming || isRecovering || interviewStatus !== 'in_progress' || !speechSynthesis.isSupported} onClick={() => { const question = [...messages].reverse().find(message => message.role === 'interviewer'); if (question) { speechSynthesis.stop(); if (!speechSynthesis.isEnabled) speechSynthesis.toggle(); speechSynthesis.handleStreamText(question.content, true) } }} className="min-h-11 rounded-lg border border-line px-3 text-xs text-muted disabled:opacity-50">再听一遍</button>
             </>}

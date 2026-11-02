@@ -34,4 +34,8 @@ export const configValidationSchema = Joi.object({
   DEEPSEEK_TEMPERATURE: Joi.number().min(0).max(2).default(0.7),
   PAYMENT_MODE: Joi.string().valid('disabled', 'virtual').default('disabled'),
   MAX_TOKENS: Joi.number().integer().min(1).default(4000),
+  DASHSCOPE_API_KEY: Joi.string().trim().allow('').optional(),
+  DASHSCOPE_TTS_MODEL: Joi.string()
+    .pattern(/^sambert-[a-z0-9-]+-v1$/)
+    .default('sambert-zhida-v1'),
 });

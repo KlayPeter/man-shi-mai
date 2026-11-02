@@ -8,6 +8,7 @@ import {
 import { MAX_SPEECH_BYTES } from '../dto/speech-to-text.dto';
 import { AudioTranscoderService } from './audio-transcoder.service';
 import { BaiduSpeechService } from './baidu-speech.service';
+import { DashscopeSpeechService } from './dashscope-speech.service';
 
 @Injectable()
 export class InterviewSpeechService {
@@ -16,11 +17,35 @@ export class InterviewSpeechService {
   constructor(
     private readonly audio: AudioTranscoderService,
     private readonly provider: BaiduSpeechService,
+    private readonly dashscope: DashscopeSpeechService,
   ) {}
   isConfigured(): boolean {
-    return this.provider.isConfigured();
+    return this.dashscope.isConfigured() || this.provider.isConfigured();
   }
-  async transcribe(userId: string, encoded: string): Promise<string> {
+  synthesisConfigured(): boolean {
+    return this.dashscope.isConfigured();
+  }
+  async synthesize(
+    userId: string,
+    text: string,
+    signal?: AbortSignal,
+  ): Promise<Buffer> {
+    if (!this.dashscope.isConfigured())
+      throw new ServiceUnavailableException('云端朗读尚未配置。');
+    if (!text.trim() || text.length > 500)
+      throw new BadRequestException('每段朗读文字应为 1 至 500 字符。');
+    const release = this.claim(`tts:${userId}`, 30);
+    try {
+      return await this.dashscope.synthesize(text, signal);
+    } finally {
+      release();
+    }
+  }
+  async transcribe(
+    userId: string,
+    encoded: string,
+    signal?: AbortSignal,
+  ): Promise<string> {
     if (
       typeof encoded !== 'string' ||
       !encoded ||
@@ -36,14 +61,25 @@ export class InterviewSpeechService {
       buffer.toString('base64') !== encoded
     )
       throw new BadRequestException('录音不能超过 4 MB。');
-    this.provider.assertConfigured();
+    if (!this.dashscope.isConfigured()) this.provider.assertConfigured();
+    const release = this.claim(userId, 8);
+    try {
+      const pcm = await this.audio.toPcm(buffer);
+      return this.dashscope.isConfigured()
+        ? await this.dashscope.recognize(pcm, signal)
+        : await this.provider.recognize(pcm, userId);
+    } finally {
+      release();
+    }
+  }
+  private claim(userId: string, attempts: number): () => void {
     const now = Date.now();
     for (const [key, item] of this.users) {
       item.starts = item.starts.filter((time) => time > now - 60000);
       if (!item.active && !item.starts.length) this.users.delete(key);
     }
     const state = this.users.get(userId) || { active: false, starts: [] };
-    if (state.active || state.starts.length >= 8)
+    if (state.active || state.starts.length >= attempts)
       throw new HttpException(
         '语音请求过于频繁，请稍后重试。',
         HttpStatus.TOO_MANY_REQUESTS,
@@ -56,14 +92,9 @@ export class InterviewSpeechService {
     state.starts.push(now);
     this.users.set(userId, state);
     this.active++;
-    try {
-      return await this.provider.recognize(
-        await this.audio.toPcm(buffer),
-        userId,
-      );
-    } finally {
+    return () => {
       state.active = false;
       this.active--;
-    }
+    };
   }
 }

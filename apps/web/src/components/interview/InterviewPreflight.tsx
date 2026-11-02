@@ -115,7 +115,8 @@ export default function InterviewPreflight({ type, remaining, onStart }: {
           {state === 'recording' && <div className="mt-4" role="status"><p className="mb-2 text-xs text-muted">说一句自我介绍，看看声音是否清晰</p><meter aria-label="麦克风音量" min={0} max={1} value={level} className="h-3 w-full" /></div>}
           {url && <div className="mt-4"><p className="mb-2 flex items-center gap-2 text-sm text-muted"><Check size={16} />录音已收到，请回听确认</p><audio controls src={url} aria-label="试音回放" className="w-full" /></div>}
           {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
-          <p className="mt-3 text-xs text-muted">朗读由浏览器提供，正式回答采用分段录音、校对后发送。</p>
+          <p className="mt-3 text-xs text-muted">{sound.source === 'cloud' ? '面试官使用云端音色朗读' : '面试官使用浏览器朗读'}，回答采用分段录音、校对后发送。</p>
+          {sound.error && <p role="alert" className="mt-2 text-sm text-red-700">{sound.error}</p>}
         </div>}
         <div className="rounded-xl bg-primary-50 p-4 text-sm text-primary-900">
           <p className="font-medium">正式开始消耗 1 次{type === 'special' ? '专业能力' : 'HR / 行为'}面试权益</p>

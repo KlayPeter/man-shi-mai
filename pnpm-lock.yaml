@@ -215,6 +215,9 @@ importers:
       ali-oss:
         specifier: ^6.23.0
         version: 6.23.0
+      ws:
+        specifier: ^8.19.0
+        version: 8.19.0
     devDependencies:
       "@eslint/eslintrc":
         specifier: ^3.2.0
@@ -294,6 +297,9 @@ importers:
       "@types/ali-oss":
         specifier: ^6.23.3
         version: 6.23.3
+      "@types/ws":
+        specifier: ^8.18.2
+        version: 8.18.2
 packages:
   "@alloc/quick-lru@5.2.0":
     resolution:
@@ -7876,6 +7882,8 @@ packages:
   "@types/ali-oss@6.23.3":
     resolution:
       integrity: sha512-huSf6njkqhSeR37OMJTGMCyUg2d9Zp2AioefhYuUMeh0vNM+WybctrBor7bO/RcCbLCQI6sHn6NtPBIWALYVJg==
+  "@types/ws@8.18.2":
+    resolution: { integrity: sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w== }
 snapshots:
   "@alloc/quick-lru@5.2.0": {}
   "@asamuzakjp/css-color@5.1.11":
@@ -13388,3 +13396,6 @@ snapshots:
       zod: 4.4.3
   zod@4.4.3: {}
   "@types/ali-oss@6.23.3": {}
+  "@types/ws@8.18.2":
+    dependencies:
+      '@types/node': 22.19.7

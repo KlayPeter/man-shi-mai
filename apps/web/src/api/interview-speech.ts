@@ -6,6 +6,17 @@ export async function isInterviewSpeechConfigured(signal?: AbortSignal): Promise
   return !!result && typeof result === 'object' && 'available' in result && result.available === true
 }
 
+export async function isInterviewSynthesisConfigured(signal?: AbortSignal): Promise<boolean> {
+  const result = await request.get<unknown, unknown>('/interview/speech/status', { signal })
+  return !!result && typeof result === 'object' && 'synthesisAvailable' in result && result.synthesisAvailable === true
+}
+
+export async function synthesizeInterviewSpeech(text: string, signal: AbortSignal): Promise<Blob> {
+  const audio = await request.post<unknown, Blob>('/interview/speech/synthesize', { text }, { signal, timeout: 25000, responseType: 'blob' })
+  if (!(audio instanceof Blob) || !audio.type.startsWith('audio/') || audio.size < 44 || audio.size > 2 * 1024 * 1024) throw new Error('朗读音频无效，请重听或使用文字。')
+  return audio
+}
+
 export function audioToBase64(blob: Blob, signal: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()

@@ -1,4 +1,5 @@
 import { SpeechToTextDto } from './dto/speech-to-text.dto';
+import { SynthesizeSpeechDto } from './dto/synthesize-speech.dto';
 import { InterviewSpeechService } from './services/interview-speech.service';
 import { InterviewHistoryQueryDto } from './dto/interview-history.dto';
 import {
@@ -528,7 +529,36 @@ export class InterviewController {
   @Get('speech/status')
   @ApiOperation({ summary: '查询语音识别是否已配置' })
   speechStatus() {
-    return ResponseUtil.success({ available: this.speech.isConfigured() });
+    return ResponseUtil.success({
+      available: this.speech.isConfigured(),
+      synthesisAvailable: this.speech.synthesisConfigured(),
+    });
+  }
+
+  @Post('speech/synthesize')
+  @ApiOperation({ summary: '合成面试官朗读音频' })
+  async synthesizeSpeech(
+    @Body() body: SynthesizeSpeechDto,
+    @Request() req: { user: { userId: string } },
+    @Res() res: Response,
+  ) {
+    const controller = new AbortController();
+    const close = () => controller.abort();
+    res.once('close', close);
+    try {
+      const audio = await this.speech.synthesize(
+        req.user.userId,
+        body.text,
+        controller.signal,
+      );
+      if (!controller.signal.aborted) {
+        res.setHeader('Content-Type', 'audio/wav');
+        res.setHeader('Cache-Control', 'no-store');
+        res.status(200).send(audio);
+      }
+    } finally {
+      res.off('close', close);
+    }
   }
 
   @Post('speech-to-text')
@@ -537,9 +567,21 @@ export class InterviewController {
   async speechToText(
     @Body() body: SpeechToTextDto,
     @Request() req: { user: { userId: string } },
+    @Res({ passthrough: true }) res: Response,
   ) {
-    const text = await this.speech.transcribe(req.user.userId, body.audio);
-    return ResponseUtil.success({ text }, '识别成功');
+    const controller = new AbortController();
+    const close = () => controller.abort();
+    res.once('close', close);
+    try {
+      const text = await this.speech.transcribe(
+        req.user.userId,
+        body.audio,
+        controller.signal,
+      );
+      return ResponseUtil.success({ text }, '识别成功');
+    } finally {
+      res.off('close', close);
+    }
   }
 
   /**

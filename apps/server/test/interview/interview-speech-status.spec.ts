@@ -1,4 +1,8 @@
-import { ExecutionContext, INestApplication } from '@nestjs/common';
+import {
+  ExecutionContext,
+  INestApplication,
+  ValidationPipe,
+} from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { of } from 'rxjs';
@@ -17,7 +21,11 @@ jest.mock('../../src/interview/services/interview-report.service', () => ({
 
 describe('interview speech status HTTP boundary', () => {
   let app: INestApplication;
-  const speech = { isConfigured: jest.fn() };
+  const speech = {
+    isConfigured: jest.fn(),
+    synthesisConfigured: jest.fn(() => false),
+    synthesize: jest.fn().mockResolvedValue(Buffer.from('synthetic-wav')),
+  };
   const interview = { startMockInterviewWithStream: jest.fn(() => of()) };
 
   beforeAll(async () => {
@@ -38,6 +46,9 @@ describe('interview speech status HTTP boundary', () => {
       })
       .compile();
     app = module.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({ transform: true, whitelist: true }),
+    );
     await app.init();
   });
 
@@ -49,14 +60,20 @@ describe('interview speech status HTTP boundary', () => {
       .get('/interview/speech/status')
       .expect(200)
       .expect(({ body }) => {
-        expect(body.data).toEqual({ available: false });
+        expect(body.data).toEqual({
+          available: false,
+          synthesisAvailable: false,
+        });
       });
     speech.isConfigured.mockReturnValue(true);
     await request(app.getHttpServer())
       .get('/interview/speech/status')
       .expect(200)
       .expect(({ body }) => {
-        expect(body.data).toEqual({ available: true });
+        expect(body.data).toEqual({
+          available: true,
+          synthesisAvailable: false,
+        });
       });
   });
 
@@ -64,10 +81,39 @@ describe('interview speech status HTTP boundary', () => {
     await request(app.getHttpServer())
       .post('/interview/mock/start')
       .set('Origin', 'https://untrusted.example')
-      .send({})
+      .send({
+        requestId: '88a0a392-6497-46b7-82e7-c924db38fb12',
+        interviewType: 'special',
+        positionName: '前端工程师',
+      })
       .expect(200)
       .expect((response) => {
         expect(response.headers['access-control-allow-origin']).toBeUndefined();
       });
+  });
+  it('returns audio bytes and validates text before calling the provider', async () => {
+    await request(app.getHttpServer())
+      .post('/interview/speech/synthesize')
+      .send({ text: '你好', userId: 'foreign' })
+      .expect(200)
+      .expect('Content-Type', /audio\/wav/)
+      .expect('Cache-Control', 'no-store');
+    expect(speech.synthesize).toHaveBeenCalledWith(
+      'test-user',
+      '你好',
+      expect.any(AbortSignal),
+    );
+    const count = speech.synthesize.mock.calls.length;
+    for (const body of [
+      {},
+      { text: ' ' },
+      { text: 123 },
+      { text: 'a'.repeat(501) },
+    ])
+      await request(app.getHttpServer())
+        .post('/interview/speech/synthesize')
+        .send(body)
+        .expect(400);
+    expect(speech.synthesize).toHaveBeenCalledTimes(count);
   });
 });
