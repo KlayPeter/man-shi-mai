@@ -109,9 +109,9 @@ export const jsonLdOrganization = (seo = SEO) => ({
   url: seo.siteUrl,
   logo: {
     '@type': 'ImageObject',
-    url: absoluteUrl(seo.ogImage),
-    width: seo.ogImageWidth,
-    height: seo.ogImageHeight,
+    url: absoluteUrl('/logo.png'),
+    width: 512,
+    height: 512,
   },
   description: seo.defaultDescription,
   email: seo.contactEmail,

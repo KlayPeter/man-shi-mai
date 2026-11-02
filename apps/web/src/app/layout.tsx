@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   keywords: SEO.defaultKeywords,
   authors: [{ name: SEO.author }],
   icons: {
-    icon: '/logo.png',
+    icon: [{ url: '/logo.svg', type: 'image/svg+xml' }, { url: '/logo.png', type: 'image/png', sizes: '512x512' }],
     apple: '/apple-touch-icon.png'
   },
   manifest: '/manifest.json',
