@@ -428,7 +428,6 @@ export default function InterviewPageContent() {
     const currentJd = overrideData?.jd || jd || interviewStore.selectedPosition?.jd || ''
     const currentResumeId = overrideData?.resumeId !== undefined ? overrideData.resumeId : interviewStore.resumeId
 
-    updateQuery({ step: 'progress' })
     setProgressValue(0)
     setProgressLabel('正在准备...')
     setProgressSteps([])
@@ -469,6 +468,14 @@ export default function InterviewPageContent() {
       quizOwnerId: readStoredOwnerId(),
       quizRequest: params
     })
+
+    // 输入页切换布局会卸载组件，先保存请求，让生成页独占流式连接。
+    if (step === 'input') {
+      resumeQuizInFlight.current = false
+      updateQuery({ step: 'progress' })
+      return
+    }
+    if (step !== 'progress') updateQuery({ step: 'progress' })
 
     let confirmed = false
     let receivedError = false
