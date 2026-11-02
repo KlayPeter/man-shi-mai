@@ -4,6 +4,7 @@
 
 node_modules/
 .next/
+.next-dev/
 dist/
 build/
 out/
