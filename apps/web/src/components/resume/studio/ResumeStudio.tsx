@@ -38,6 +38,15 @@ export default function ResumeStudio({ id }: Props) {
 
   const { activeSection, currentResume, isSaving } = store;
 
+  if (currentResume.sourceType === 'upload') {
+    return <div className="page-container workspace-page max-w-4xl">
+      <button type="button" onClick={() => router.push('/resume')} className="min-h-11 text-sm text-primary-700">← 返回我的简历</button>
+      <header className="my-6 flex flex-wrap items-center justify-between gap-4"><div><h1 className="workspace-heading break-all">{currentResume.resumeName}</h1><p className="mt-2 text-sm text-muted">检查提取的文字，这些内容将用于面试提问。</p></div><button type="button" onClick={() => router.push(`/interview/start?resumeId=${encodeURIComponent(id)}`)} className="min-h-11 rounded-full bg-primary-600 px-6 text-sm font-medium text-white">用这份简历练习</button></header>
+      <section aria-label="简历提取内容" className="surface-panel p-5 sm:p-8"><p className="whitespace-pre-wrap break-words text-sm leading-8">{currentResume.plainTextSnapshot || '这份历史文件尚无文本快照，发起面试时会尝试解析。若解析失败，请重新上传文本型 PDF 或 DOCX。'}</p></section>
+      <p className="mt-5 text-xs text-muted">上传文件保留原始内容。需要在线编排简历，可在简历中心新建在线简历。</p>
+    </div>;
+  }
+
   return (
     <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
       {/* 顶部导航栏 */}

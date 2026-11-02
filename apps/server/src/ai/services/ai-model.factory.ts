@@ -80,7 +80,8 @@ export class AIModelFactory {
       ...model.modelKwargs,
       thinking: { type: 'disabled' },
     };
-    model.temperature = 0.3;
+    model.temperature = 0;
+    model.maxTokens = Math.max(model.maxTokens ?? 4000, 8000);
     return model;
   }
 

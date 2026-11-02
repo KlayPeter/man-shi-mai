@@ -313,6 +313,12 @@ export class AIInterviewResult {
   @Prop({ type: [MongooseSchema.Types.Mixed], default: [] })
   reportEvidence?: AssessmentOutput['evidence'];
 
+  @Prop({ type: [MongooseSchema.Types.Mixed], default: undefined })
+  reportQuestionAssessments?: AssessmentOutput['questionAssessments'];
+
+  @Prop({ type: MongooseSchema.Types.Mixed })
+  reportScoring?: AssessmentOutput['scoring'];
+
   @Prop()
   reportGeneratedAt?: Date; // 报告生成完成时间
 

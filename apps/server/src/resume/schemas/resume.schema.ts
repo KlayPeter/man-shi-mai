@@ -15,6 +15,9 @@ export class Resume {
   url?: string;
 
   @Prop()
+  localFileKey?: string;
+
+  @Prop()
   uploadTime: Date;
 
   @Prop({ enum: ['upload', 'editor', 'hybrid'], default: 'upload' })

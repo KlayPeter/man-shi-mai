@@ -41,3 +41,7 @@
 本轮检查命令：后端测试 `document-parser`、`interview-agent`、`interview-reliability`、`interview-report`、`sts.service`、`resume.service` 六组，以及后端 lint、build。PDF／DOCX 回归样本位于 `apps/server/test/interview/fixtures`，全部为生成的虚构英文简历，无个人数据。
 
 边界：82／20 是两题合成样本的单次模型输出，不是人工标注基准或校准后的能力分；较充分回答中的索引边界描述仍可追问，模型反馈对技术细节的判断不保证全部准确。按用户要求，本轮仅验收本地解析和错误处理；未配置 OSS 测试环境，故真实上传、Bucket CORS／RAM 和私有文件云端读取仍未验收。未增加 OCR，扫描件、加密或损坏文件不能保证提取。
+
+## 后续评分规则与本地上传
+
+以上 v1 抽样是当时的历史结果。后续已引入逐题锚点及服务端确定性汇总，并完成无需 OSS 的本地上传；新行为、参考来源和真实模型回归见[评分与本地上传说明](interview-scoring-and-local-upload.md)。旧报告不自动重算。

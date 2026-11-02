@@ -44,7 +44,8 @@ describe('AIModelFactory', () => {
     });
     const model = new AIModelFactory(config).createAssessmentModel();
     expect(model.modelKwargs).toEqual({ thinking: { type: 'disabled' } });
-    expect(model.temperature).toBe(0.3);
+    expect(model.temperature).toBe(0);
+    expect(model.maxTokens).toBe(8000);
     expect(chatDeepSeek).toHaveBeenCalledWith(
       expect.objectContaining({ maxTokens: 4000 }),
     );

@@ -148,7 +148,7 @@ export default function ResumeList() {
                   onClick={() => router.push(`/resume/${resume._id}`)}
                   className="min-h-11 flex-1 bg-primary-50 text-primary-700 hover:bg-primary-100 py-2 rounded-lg text-sm font-medium transition-colors"
                 >
-                  编辑
+                  {resume.sourceType === 'upload' ? '查看内容' : '编辑'}
                 </button>
                 <button
                   onClick={() => router.push(`/interview/start?resumeId=${encodeURIComponent(resume._id)}`)}

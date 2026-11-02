@@ -54,8 +54,26 @@ describe('document download boundaries', () => {
         `https://test-bucket.oss-cn-beijing.aliyuncs.com/user-resumes/${userId}/bad.${extension}`,
         userId,
       ),
-    ).rejects.toThrow('解析失败');
+    ).rejects.toThrow('文件内容与格式不符');
   });
+
+  it.each([
+    ['pdf', Buffer.from('%PDF-1.4\nprivate-document-marker')],
+    [
+      'docx',
+      Buffer.concat([
+        Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+        Buffer.from('private-document-marker'),
+      ]),
+    ],
+  ])(
+    'returns safe failures for structurally damaged %s documents',
+    async (extension, buffer) => {
+      await expect(
+        parser.parseDocument(buffer, `broken.${extension}`),
+      ).rejects.toThrow(`${extension.toUpperCase()} 文件解析失败`);
+    },
+  );
 
   it('rejects another user file before downloading', async () => {
     jest.mocked(axios.get).mockClear();

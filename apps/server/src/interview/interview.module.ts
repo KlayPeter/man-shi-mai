@@ -12,7 +12,7 @@ import { InterviewController } from './interview.controller';
 import { InterviewService } from './services/interview.service';
 import { InterviewAIService } from './services/interview-ai.service';
 import { InterviewAgentService } from './services/interview-agent.service';
-import { DocumentParserService } from './services/document-parser.service';
+import { DocumentParserModule } from './document-parser.module';
 import { ConfigModule } from '@nestjs/config';
 import { AIModule } from '../ai/ai.module';
 import { StsModule } from '../sts/sts.module';
@@ -43,6 +43,7 @@ import {
     ConfigModule,
     QuotaLedgerModule,
     StsModule,
+    DocumentParserModule,
     AIModule, // 导入 AI 模块以使用 AIModelFactory
     MongooseModule.forFeature([
       { name: ConsumptionRecord.name, schema: ConsumptionRecordSchema },
@@ -66,7 +67,6 @@ import {
     InterviewService,
     InterviewAIService,
     InterviewAgentService,
-    DocumentParserService,
     ResumeAnalysisService,
     ConversationContinuationService,
   ],
@@ -74,7 +74,7 @@ import {
     InterviewService,
     InterviewAIService,
     InterviewAgentService,
-    DocumentParserService,
+    DocumentParserModule,
   ],
 })
 export class InterviewModule {}

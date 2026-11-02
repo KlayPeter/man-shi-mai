@@ -1,0 +1,83 @@
+[
+  {
+    "id": "strong",
+    "expectedScoreRange": [
+      70,
+      95
+    ],
+    "excludedQuestions": [],
+    "context": {
+      "interviewType": "special",
+      "company": "合成测试团队",
+      "positionName": "前端开发工程师",
+      "jd": "负责React后台性能优化和接口联调",
+      "resumeContent": "合成资料：一年React开发经历，负责订单后台虚拟列表优化。没有管理经历。",
+      "qaList": [
+        {
+          "question": "固定行高为40像素的虚拟列表，如何根据scrollTop和视口高度计算渲染起止索引，并避免快速滚动时出现白屏？",
+          "answer": "起始索引是floor(scrollTop/40)，可见数量是ceil(视口高度/40)，结束索引限制在总条数以内。渲染范围向前后各扩展5行作为overscan，顶部用起始索引乘40占位，并保持容器总高度。滚动回调用requestAnimationFrame合并更新，快速滚动时观察白屏再调整overscan，边界要覆盖空列表和最后一页。"
+        },
+        {
+          "question": "你如何验证首屏从1.8秒到0.9秒是优化的效果，而不是缓存或网络波动？",
+          "answer": "我固定浏览器版本、数据量和网络条件，禁用缓存，分别重复十次，记录首屏渲染的中位数和P95，同时检查错误率与交互延迟。1.8秒到0.9秒只是同一测试环境的结果，不能直接当作线上收益。"
+        }
+      ]
+    }
+  },
+  {
+    "id": "weak",
+    "expectedScoreRange": [
+      0,
+      55
+    ],
+    "excludedQuestions": [],
+    "context": {
+      "interviewType": "special",
+      "company": "合成测试团队",
+      "positionName": "前端开发工程师",
+      "jd": "负责React后台性能优化和接口联调",
+      "resumeContent": "合成资料：一年React开发经历，负责订单后台虚拟列表优化。没有管理经历。",
+      "qaList": [
+        {
+          "question": "固定行高为40像素的虚拟列表，如何根据scrollTop和视口高度计算渲染起止索引，并避免快速滚动时出现白屏？",
+          "answer": "产品希望尽快上线，但我担心空状态会影响操作。我把问题做成可复现清单，和产品一起按影响排序，先修阻断问题，再约定补齐时间，最后按清单共同验收。"
+        },
+        {
+          "question": "你如何验证首屏从1.8秒到0.9秒是优化的效果，而不是缓存或网络波动？",
+          "answer": "我感觉快了很多，没有记录测量条件和指标。"
+        }
+      ]
+    }
+  },
+  {
+    "id": "excellent-with-candidate-question",
+    "expectedScoreRange": [
+      90,
+      100
+    ],
+    "excludedQuestions": [
+      3
+    ],
+    "context": {
+      "interviewType": "special",
+      "company": "合成测试团队",
+      "positionName": "前端开发工程师",
+      "jd": "React性能优化",
+      "resumeContent": "",
+      "qaList": [
+        {
+          "question": "固定行高40px，scrollTop=39px，视口80px，无缓冲时该渲染哪几行？请说明通用公式与边界。",
+          "answer": "渲染索引0、1、2三行。start=floor(39/40)=0，endExclusive=ceil((39+80)/40)=3，使用半开区间[start,endExclusive)。通用start=floor(scrollTop/rowHeight)，endExclusive=ceil((scrollTop+viewportHeight)/rowHeight)，两端钳制在[0,N]；空列表直接返回空区间，最后一页endExclusive不超过N。不能仅用ceil(viewportHeight/rowHeight)计算数量，因为首行可能只露出一部分，这个例子实际跨三行。固定行高是前提，变高列表需要测量高度再查累计偏移。"
+        },
+        {
+          "question": "实际快速滚动中如何避免白屏？",
+          "answer": "在可见区间前后各加overscan，最终renderStart=max(0,start-buffer)，renderEnd=min(N,endExclusive+buffer)。初始buffer取5行，记录滚动方向和相邻帧位移除时间估算速度，速度上升时提前扩展滚动方向一侧，最多20行，避免无限增加DOM和内存。translateY用renderStart乘行高，容器总高度N乘行高，数据slice使用半开区间，保证占位和索引一致。rAF合并每帧更新，不做会拖延绘制的长时间防抖。用快速上滚下滚、首尾跳转、空列表测试，并记录空白帧和长任务数量；调高buffer后复测CPU和DOM节点数，按低端设备表现取舍。"
+        },
+        {
+          "question": "最后你还有什么想了解的？",
+          "answer": "我想了解团队的代码评审方式。"
+        }
+      ]
+    }
+  }
+]

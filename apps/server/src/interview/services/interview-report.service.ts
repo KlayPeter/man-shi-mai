@@ -16,6 +16,7 @@ import {
   ASSESSMENT_VERSION,
   validateAssessment,
 } from '../schemas/assessment-output';
+import { RATING_ANCHORS } from '../schemas/assessment-rubric';
 
 export type ReviewStatus =
   | 'not_ready'
@@ -76,15 +77,35 @@ export class InterviewReportService {
     const record = await this.owned(userId, resultId);
     const status = this.status(record);
     const attempts = record.reportAttempts || 0;
-    const questions = (record.qaList || []).map((qa, index) => ({
-      questionNumber: index + 1,
-      question: qa?.question || '',
-      answer: qa?.answer || '',
-      score: qa?.score ?? null,
-      comment: qa?.aiComment || '',
-      highlights: qa?.highlights || [],
-      improvements: qa?.improvements || [],
-    }));
+    const questions = (record.qaList || []).map((qa, index) => {
+      const assessment =
+        status === 'completed'
+          ? record.reportQuestionAssessments?.find(
+              (item) => item.questionNumber === index + 1,
+            )
+          : undefined;
+      return {
+        questionNumber: index + 1,
+        question: qa?.question || '',
+        answer: qa?.answer || '',
+        score: assessment ? assessment.score : (qa?.score ?? null),
+        comment: assessment?.feedback || qa?.aiComment || '',
+        excludedReason: assessment?.excludedReason ?? null,
+        dimensions:
+          assessment && !assessment.excludedReason
+            ? (record.reportScoring?.weights || []).map((item) => ({
+                label: item.label,
+                weight: item.weight,
+                score:
+                  assessment.ratings[item.key] === null
+                    ? null
+                    : RATING_ANCHORS[assessment.ratings[item.key]! - 1].score,
+              }))
+            : [],
+        highlights: qa?.highlights || [],
+        improvements: qa?.improvements || [],
+      };
+    });
     // 历史报告可读，但没有证据就不能伪造引用；也不暴露整份 sessionState/简历。
     return {
       resultId,
@@ -118,6 +139,7 @@ export class InterviewReportService {
               improvements: record.improvements || [],
               evidence: record.reportEvidence || [],
               rubricVersion: record.reportRubricVersion || null,
+              scoring: record.reportScoring || null,
             }
           : null,
     };
@@ -217,13 +239,17 @@ export class InterviewReportService {
         output,
         qaList.map((item) => item.answer),
       );
-      const { evidence, ...scores } = assessment;
+      const { evidence, questionAssessments, scoring, ...scores } = assessment;
       await this.results.updateOne(condition, {
         $set: {
           ...scores,
           reportStatus: 'completed',
           reportGeneratedAt: new Date(),
           reportEvidence: evidence,
+          ...(questionAssessments
+            ? { reportQuestionAssessments: questionAssessments }
+            : {}),
+          ...(scoring ? { reportScoring: scoring } : {}),
           reportRubricVersion: ASSESSMENT_VERSION,
         },
         $unset: {

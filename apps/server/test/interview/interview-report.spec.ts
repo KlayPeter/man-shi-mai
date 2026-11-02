@@ -163,7 +163,7 @@ describe('InterviewReportService', () => {
         $set: expect.objectContaining({
           overallScore: 0,
           reportStatus: 'completed',
-          reportRubricVersion: 'interview-evidence-v1',
+          reportRubricVersion: 'interview-rubric-v2',
           reportEvidence: output.evidence,
         }),
       }),

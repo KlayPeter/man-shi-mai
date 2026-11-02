@@ -7,7 +7,10 @@ import {
   Body,
   Request,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ResumeService } from './resume.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ResponseUtil } from '../common/utils/response.util';
@@ -26,6 +29,28 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 @UseGuards(JwtAuthGuard)
 export class ResumeController {
   constructor(private readonly resumeService: ResumeService) {}
+
+  @Get('upload-config')
+  uploadConfig() {
+    return ResponseUtil.success(this.resumeService.uploadConfig());
+  }
+
+  @Post('upload-file')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 0 },
+    }),
+  )
+  @ApiOperation({ summary: '上传本地简历文件并解析' })
+  async uploadFile(
+    @Request() req: { user: { userId: string } },
+    @UploadedFile() file?: { originalname: string; buffer: Buffer },
+  ) {
+    return ResponseUtil.success(
+      await this.resumeService.uploadLocalResume(req.user.userId, file),
+      '上传并解析成功',
+    );
+  }
 
   @Get('getInterviewResumeList')
   @ApiOperation({ summary: '获取面试简历列表' })

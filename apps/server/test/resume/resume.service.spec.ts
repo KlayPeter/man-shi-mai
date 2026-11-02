@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
 import { ResumeService } from '../../src/resume/resume.service';
 import { Resume } from '../../src/resume/schemas/resume.schema';
+import { DocumentParserService } from '../../src/interview/services/document-parser.service';
 import { StsService } from '../../src/sts/sts.service';
 
 describe('ResumeService', () => {
@@ -27,6 +28,8 @@ describe('ResumeService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ResumeService,
+        { provide: ConfigService, useValue: new ConfigService({}) },
+        { provide: DocumentParserService, useValue: {} },
         {
           provide: StsService,
           useValue: new StsService(

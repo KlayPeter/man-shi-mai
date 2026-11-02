@@ -1,13 +1,12 @@
 'use client'
 
+import { isAxiosError } from 'axios'
 import React, { useState, useEffect, useRef } from 'react'
 import Icon from '@/components/ui/Icon'
 import { useUserStore } from '@/stores/userStore'
 import { toast } from '@/stores/toastStore'
-import { getOSSClient } from '@/utils/oss'
-import request from '@/lib/request'
+import { uploadResumeFile } from '@/api/resume-upload'
 
-const MAX_RESUME_COUNT = 5
 const FILE_SIZE_LIMIT = 5 * 1024 * 1024
 
 interface Props {
@@ -21,10 +20,11 @@ export default function UploadResumeModal({ open, onClose, onUploaded }: Props) 
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+  const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (open) { setSelectedFile(null); setDragOver(false) }
+    if (open) { setSelectedFile(null); setDragOver(false); setError('') }
   }, [open])
 
   const processFile = (file: File) => {
@@ -40,6 +40,7 @@ export default function UploadResumeModal({ open, onClose, onUploaded }: Props) 
       return
     }
     setSelectedFile(file)
+    setError('')
   }
 
   const handleDrop = (e: React.DragEvent) => {
@@ -58,25 +59,15 @@ export default function UploadResumeModal({ open, onClose, onUploaded }: Props) 
   const handleUpload = async () => {
     if (!selectedFile) return
     setUploading(true)
+    setError('')
     try {
-      const ossClient = await getOSSClient(userStore.token)
-      const userId = userStore.userInfo._id
-      if (!userId) throw new Error('登录信息缺失，请重新登录')
-      const extension = selectedFile.name.split('.').pop()?.toLowerCase()
-      if (!['pdf', 'docx'].includes(extension || '')) throw new Error('仅支持 PDF 或 DOCX 简历')
-      const fileName = `user-resumes/${userId}/${crypto.randomUUID()}.${extension}`
-      const ossRes = await ossClient.put(fileName, selectedFile)
-
-      const res = await request.post<unknown, { _id: string }>('/resume/uploadResume', {
-        url: ossRes.url,
-        resumeName: selectedFile.name,
-        uploadTime: new Date().toISOString()
-      })
+      const res = await uploadResumeFile(selectedFile, userStore.token, userStore.userInfo._id || '')
       toast({ title: '上传成功', color: 'green' })
       onUploaded(res._id)
       onClose()
-    } catch (e: any) {
-      toast({ title: '上传失败', description: e.message || '请稍后重试', color: 'red' })
+    } catch (e: unknown) {
+      const message = isAxiosError<{ message?: unknown }>(e) ? e.response?.data?.message : undefined
+      setError(typeof message === 'string' ? message : e instanceof Error ? e.message : '上传失败，请重试')
     } finally {
       setUploading(false)
     }
@@ -85,11 +76,11 @@ export default function UploadResumeModal({ open, onClose, onUploaded }: Props) 
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => { if (!uploading) onClose() }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="upload-resume-title" className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <span className="font-semibold text-gray-900">上传简历</span>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 transition-colors">
+          <span id="upload-resume-title" className="font-semibold text-gray-900">上传简历</span>
+          <button onClick={onClose} disabled={uploading} aria-label="关闭上传窗口" className="min-h-11 min-w-11 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50">
             <Icon name="i-heroicons-x-mark" className="w-5 h-5 text-gray-500" />
           </button>
         </div>
@@ -98,6 +89,8 @@ export default function UploadResumeModal({ open, onClose, onUploaded }: Props) 
           <div
             className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${dragOver ? 'border-primary-500 bg-primary-50' : 'border-gray-300 hover:border-gray-400'} ${uploading ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}
             onClick={() => fileRef.current?.click()}
+            role="button" tabIndex={uploading ? -1 : 0} aria-label="选择 PDF 或 DOCX 简历文件" aria-disabled={uploading}
+            onKeyDown={event => { if (event.target === event.currentTarget && !uploading && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); fileRef.current?.click() } }}
             onDragOver={e => { e.preventDefault(); setDragOver(true) }}
             onDragLeave={() => setDragOver(false)}
             onDrop={handleDrop}
@@ -109,7 +102,7 @@ export default function UploadResumeModal({ open, onClose, onUploaded }: Props) 
             {uploading ? (
               <div className="flex flex-col items-center">
                 <Icon name="i-heroicons-arrow-path" className="w-12 h-12 mx-auto mb-4 text-primary-500 animate-spin" />
-                <p className="text-sm font-medium text-gray-700">上传中...</p>
+                <p role="status" className="text-sm font-medium text-gray-700">正在上传并处理简历…</p>
               </div>
             ) : selectedFile ? (
               <div className="flex flex-col items-center">
@@ -128,12 +121,13 @@ export default function UploadResumeModal({ open, onClose, onUploaded }: Props) 
                 <Icon name="i-heroicons-folder" className="w-12 h-12 mx-auto mb-4 text-gray-400" />
                 <p className="text-sm font-medium text-gray-700 mb-1">点击或拖拽文件到此处上传</p>
                 <p className="text-xs text-gray-500">
-                  支持 PDF、DOC、DOCX 格式，文件大小不超过 5MB<br />
-                  （简历最多支持 {MAX_RESUME_COUNT} 份）
+                  支持文本型 PDF、DOCX，文件大小不超过 5MB<br />
+                  上传后可检查提取的文字，再开始面试
                 </p>
               </div>
             )}
           </div>
+          {error && <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm leading-6 text-red-800">{error}</p>}
         </div>
 
         <div className="px-6 py-4 border-t border-gray-100 flex gap-2 justify-end">

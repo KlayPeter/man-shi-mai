@@ -39,30 +39,33 @@ export class DocumentParserService {
       const signedUrl = await this.storage.getResumeReadUrl(url, userId);
       const buffer = await this.downloadFile(signedUrl);
 
-      // 3. 根据文件类型解析
-      const fileType = this.getFileType(url);
-      let text: string;
-
-      switch (fileType) {
-        case 'PDF':
-          text = await this.parsePdf(buffer);
-          break;
-        case 'DOCX':
-          text = await this.parseDocx(buffer);
-          break;
-        default:
-          throw new BadRequestException(
-            `不支持的文件格式。当前仅支持: PDF, DOCX`,
-          );
-      }
+      const text = await this.parseDocument(buffer, url);
 
       this.logger.log(`文档解析成功: 长度=${text.length}字符`);
 
       return text;
     } catch (error) {
-      this.logger.error(`文档解析失败: ${error.message}`, error.stack);
+      this.logger.error('文档解析失败');
       throw error;
     }
+  }
+
+  async parseDocument(buffer: Buffer, fileName: string): Promise<string> {
+    if (!buffer.length) throw new BadRequestException('文件为空');
+    if (buffer.length > this.MAX_FILE_SIZE)
+      throw new BadRequestException('文件过大，最大支持 10MB');
+    const type = this.getFileType(fileName);
+    if (type === 'PDF') {
+      if (!buffer.subarray(0, 1024).includes(Buffer.from('%PDF-')))
+        throw new BadRequestException('PDF 文件内容与格式不符');
+      return this.parsePdf(buffer);
+    }
+    if (type === 'DOCX') {
+      if (!buffer.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])))
+        throw new BadRequestException('DOCX 文件内容与格式不符');
+      return this.parseDocx(buffer);
+    }
+    throw new BadRequestException('不支持的文件格式，仅支持 PDF、DOCX');
   }
 
   /**
@@ -92,7 +95,10 @@ export class DocumentParserService {
    * 获取文件类型
    */
   private getFileType(url: string): 'PDF' | 'DOCX' | null {
-    const urlLower = new URL(url).pathname.toLowerCase();
+    const urlLower = new URL(
+      url,
+      'https://resume.invalid/',
+    ).pathname.toLowerCase();
 
     for (const [type, extensions] of Object.entries(this.SUPPORTED_TYPES)) {
       for (const ext of extensions) {
@@ -195,9 +201,9 @@ export class DocumentParserService {
         throw error;
       }
 
-      this.logger.error(`PDF 解析失败: ${error.message}`, error.stack);
+      this.logger.error('PDF 文本解析失败');
       throw new BadRequestException(
-        `PDF 文件解析失败: ${error.message}。请确保文件未加密且未损坏`,
+        'PDF 文件解析失败，请确保文件未加密且未损坏',
       );
     }
   }
@@ -228,9 +234,7 @@ export class DocumentParserService {
 
       // 如果解析过程中有任何警告信息，记录这些警告
       if (result.messages && result.messages.length > 0) {
-        this.logger.warn(
-          `DOCX 解析警告: ${result.messages.map((m) => m.message).join(', ')}`,
-        );
+        this.logger.warn(`DOCX 解析存在 ${result.messages.length} 项格式警告`);
       }
 
       // 记录解析成功的日志，并附上提取文本的长度
@@ -245,9 +249,9 @@ export class DocumentParserService {
       }
 
       // 其他错误记录详细日志并抛出通用错误提示
-      this.logger.error(`DOCX 解析失败: ${error.message}`, error.stack);
+      this.logger.error('DOCX 文本解析失败');
       throw new BadRequestException(
-        `DOCX 文件解析失败: ${error.message}。请确保文件格式正确且未损坏`,
+        'DOCX 文件解析失败，请确保文件格式正确且未损坏',
       );
     }
   }

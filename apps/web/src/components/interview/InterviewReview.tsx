@@ -6,6 +6,7 @@ import { isAxiosError } from 'axios'
 import { getInterviewReview, generateInterviewReview, type InterviewReview as Review, type ReviewEvidence } from '@/api/interview-review'
 import { ArrowDown, ArrowRight, ChevronDown, Lightbulb, Quote, TrendingUp } from 'lucide-react'
 import ReviewOverview from './ReviewOverview'
+import ReviewScore from './ReviewScore'
 
 const buttonStyle = 'inline-flex min-h-11 items-center justify-center rounded-full border border-line px-5 py-2 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary-600 disabled:opacity-50'
 
@@ -84,7 +85,7 @@ export default function InterviewReview({ resultId }: { resultId: string }) {
       {review.canGenerate && <button type="button" onClick={generate} disabled={generating} className={`${buttonStyle} mt-5 bg-primary-600 text-white`}>{generating ? '正在发起…' : review.status === 'failed' ? '重新生成复盘' : '生成本场复盘'}</button>}
       {review.status === 'not_ready' && <Link href={`/interview?serviceType=${review.type}&step=interview&restore=true&resultId=${encodeURIComponent(resultId)}`} className={`${buttonStyle} mt-5`}>返回这场面试</Link>}
     </section>}
-    {review && <ReviewOverview review={review} selectedQuestion={selectedQuestion} onSelect={setSelectedQuestion} />}
+    {review && <><ReviewScore review={review} /><ReviewOverview review={review} selectedQuestion={selectedQuestion} onSelect={setSelectedQuestion} /></>}
     {report && <>
       <section aria-labelledby="review-focus"><h2 id="review-focus" className="mb-4 text-xl font-semibold">你的下一步</h2>
         {highlights.length + improvements.length > 0 ? <div className={`grid gap-4 ${highlights.length + improvements.length === 3 ? 'lg:grid-cols-3' : 'md:grid-cols-2'}`}>{[...highlights, ...improvements].map((item, index) => <EvidenceCard key={index} item={item} onSelect={setSelectedQuestion} />)}</div> : <p className="rounded-2xl border border-line bg-white p-5 text-sm text-muted">暂无逐题依据，先回看原问答。</p>}
@@ -104,6 +105,8 @@ export default function InterviewReview({ resultId }: { resultId: string }) {
           </summary>
           <div className="space-y-4 px-5 pb-5 sm:px-7 sm:pb-7"><div><p className="mb-2 text-xs font-medium text-muted">你的回答</p><p className="whitespace-pre-wrap rounded-xl bg-paper p-4 text-sm leading-7 [overflow-wrap:anywhere]">{item.answer || '尚未回答'}</p></div>
             {item.comment ? <div className="border-l-2 border-primary-300 pl-4 text-sm leading-7"><p className="text-xs font-medium text-primary-600">单题评价{item.score !== null ? ` · ${item.score} 分` : ''}</p><p className="whitespace-pre-wrap">{item.comment}</p></div> : <p className="text-xs text-muted">暂无单题评价</p>}
+            {item.excludedReason && <p className="text-xs text-muted">{item.excludedReason === 'candidate_questions' ? '候选人反问' : '流程性对话'} · 不计入能力总分</p>}
+            {!!item.dimensions?.length && <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">{item.dimensions.map(dimension => <div key={dimension.label} className="rounded-xl border border-line p-3"><dt className="text-xs text-muted">{dimension.label} · {dimension.weight}%</dt><dd className="mt-2 font-semibold tabular-nums">{dimension.score === null ? '未观察' : `${dimension.score} 分`}</dd></div>)}</dl>}
             {report?.evidence.filter(evidence => evidence.questionNumber === item.questionNumber).map((evidence, index) => <div key={index} className="flex flex-col gap-3 rounded-xl bg-primary-50 p-4 text-sm leading-6 sm:flex-row sm:items-start"><p className="flex-1">{evidence.feedback}</p><ArrowRight className="hidden h-4 w-4 shrink-0 text-primary-600 sm:mt-1 sm:block" aria-hidden="true" /><p className="flex-1 font-medium">{evidence.practice}</p></div>)}
           </div>
         </details>

@@ -89,3 +89,15 @@ Store 的 `pendingStart` 在请求前保存 UUID 和输入快照。SSE 的 ready
 ### 从准备到复盘的本地验收
 
 `preparation-local.spec.ts` 配合 `test/integration/start-recovery.cjs` 的 KEEP_START_SERVER、TEST_START_PORT 和 START_FIXTURE_PATH，在专用 Mongo 上连接真实 Controller、JWT、DTO、开场、扣次、回合、暂停/恢复、结束与报告服务。浏览器分别检查试音回听和拒绝授权后文字接管，完成两轮回答并生成带原文引用的复盘。模型/报告输出为明确 Stub，用户资料和简历列表为 Mock；不代表真实登录、ASR 或模型质量验收。禁止将该服务作为生产 API。
+
+### 逐题评分 v2 展示
+
+`ReviewScore` 展示总分、等级、计分题数、固定权重和计算说明；`InterviewReview` 展示单题分、维度拆分、原文依据和练习动作。`parseInterviewReview` 校验新增维度与覆盖度，兼容没有这些字段的旧报告；90 分起为优秀，不因未观察维度或候选人反问扣零分。后端新报告使用 `interview-rubric-v2`，旧报告不自动重算。
+
+```mermaid
+flowchart LR
+    A[读取复盘] --> B[校验状态与引用]
+    B --> C[总分与评分说明]
+    C --> D[逐题维度与原文]
+    D --> E[针对性练习]
+```

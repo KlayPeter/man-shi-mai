@@ -60,6 +60,18 @@ describe('runtime backend proxy', () => {
     expect(options.headers.has('cookie')).toBe(false)
   })
 
+  it('preserves binary multipart uploads and their exact boundary', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ code: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const bytes = new Uint8Array([45, 45, 97, 13, 10, 0, 255, 128, 13, 10])
+    const contentType = 'multipart/form-data; boundary=a'
+    await jsonPost(new Request('http://localhost/dev-api/resume/upload-file', { method: 'POST', headers: { 'Content-Type': contentType, Authorization: 'Bearer synthetic' }, body: bytes }))
+    const options = fetchMock.mock.calls[0][1]
+    expect(new Uint8Array(options.body)).toEqual(bytes)
+    expect(options.headers.get('content-type')).toBe(contentType)
+    expect(options.headers.get('authorization')).toBe('Bearer synthetic')
+  })
+
   it('returns a recoverable gateway error without exposing backend details', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('private backend detail')))
     const response = await GET(new Request('http://localhost/dev-api/user/info'))

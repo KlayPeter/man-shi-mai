@@ -193,3 +193,9 @@ flowchart LR
 `POST mock/start-result/:resultId/cancel` 仅查询当前用户已有场次，使用同一取消/补偿流程，不依赖浏览器原始请求和简历输入。缺失或其他用户记录返回 404；旧记录没有 startStatus/requestId 时拒绝退款；已 ready 返回 ready，让用户继续原场次；prepared 有活跃租约时返回 409；refunding/cancelled 可重复核对，不能重复退还。
 
 模拟面试历史列表额外返回可选 startStatus，旧记录保持原结构；不返回请求摘要、简历快照、任务凭据。该入口为用户主动恢复，不意味着后台自动扫描。
+
+## 逐题证据评分 v2
+
+新生成报告使用 `interview-rubric-v2`：模型输出每条非空回答的四维度证据等级，`scoreAssessment` 校验原文与完整覆盖，再按固定锚点及专项／综合权重计算单题分和总分。候选人反问／流程对话不计分，未观察维度不按零分计入；90 分起为优秀。原理题不强求 STAR 或可核验业绩。
+
+`InterviewReportService` 保存并返回逐题分数、维度、非计分原因和评分覆盖度；旧报告保持可读，无批量回填。`DocumentParserModule` 供面试与本地上传共同使用。方法来源、数学规则和验收入口见[评分与本地上传说明](../../../../docs/interview-scoring-and-local-upload.md)。

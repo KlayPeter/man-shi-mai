@@ -19,6 +19,8 @@ export const configValidationSchema = Joi.object({
   // Server
   PORT: Joi.number().integer().min(1).max(65535).default(3000),
   CORS_ORIGINS: Joi.string().allow('').optional(),
+  RESUME_STORAGE_DRIVER: Joi.string().valid('local', 'oss').default('local'),
+  RESUME_LOCAL_DIR: Joi.string().optional(),
   NODE_ENV: Joi.string()
     .valid('development', 'production', 'test')
     .default('development'),

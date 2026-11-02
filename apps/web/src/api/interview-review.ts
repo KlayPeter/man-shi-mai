@@ -1,10 +1,12 @@
 import request from '@/lib/request'
 export type ReviewStatus = 'not_ready' | 'pending' | 'generating' | 'completed' | 'failed' | 'insufficient_data'
-export interface ReviewQuestion { questionNumber: number; question: string; answer: string; score: number | null; comment: string; highlights: string[]; improvements: string[] }
+export interface ReviewDimension { label: string; score: number | null; weight: number }
+export interface ReviewScoring { scoredQuestions: number; answeredQuestions: number; weights: { key: string; label: string; weight: number }[] }
+export interface ReviewQuestion { questionNumber: number; question: string; answer: string; score: number | null; comment: string; highlights: string[]; improvements: string[]; excludedReason?: string | null; dimensions?: ReviewDimension[] }
 export interface ReviewEvidence { questionNumber: number; quote: string; kind: 'strength' | 'improvement'; feedback: string; practice: string }
 export interface InterviewReview {
   resultId: string; type: string; position: string; company: string; status: ReviewStatus; canGenerate: boolean; message: string; questions: ReviewQuestion[]
-  report: null | { overallScore: number | null; overallLevel: string; summary: string; radarData: { dimension: string; score: number; description: string }[]; strengths: string[]; weaknesses: string[]; improvements: { category: string; suggestion: string; priority: string }[]; evidence: ReviewEvidence[]; rubricVersion: string | null }
+  report: null | { overallScore: number | null; overallLevel: string; summary: string; radarData: { dimension: string; score: number; description: string }[]; strengths: string[]; weaknesses: string[]; improvements: { category: string; suggestion: string; priority: string }[]; evidence: ReviewEvidence[]; rubricVersion: string | null; scoring?: ReviewScoring | null }
 }
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
 const string = (v: unknown): string => { if (typeof v !== 'string') throw new Error('复盘文本格式异常'); return v }
@@ -14,7 +16,14 @@ export function parseInterviewReview(value: unknown): InterviewReview {
   if (!record(value) || !Array.isArray(value.questions) || !['not_ready', 'pending', 'generating', 'completed', 'failed', 'insufficient_data'].includes(String(value.status)) || typeof value.canGenerate !== 'boolean') throw new Error('复盘响应格式异常')
   const questions = value.questions.map(item => {
     if (!record(item) || typeof item.questionNumber !== 'number' || !Number.isInteger(item.questionNumber) || item.questionNumber < 1) throw new Error('问答序号异常')
-    return { questionNumber: item.questionNumber, question: string(item.question), answer: string(item.answer), score: score(item.score), comment: string(item.comment), highlights: strings(item.highlights), improvements: strings(item.improvements) }
+    const dimensions = item.dimensions === undefined ? [] : item.dimensions
+    if (!Array.isArray(dimensions)) throw new Error('单题维度格式异常')
+    const parsedDimensions = dimensions.map(dimension => {
+      if (!record(dimension) || typeof dimension.weight !== 'number' || !Number.isFinite(dimension.weight) || dimension.weight <= 0 || dimension.weight > 100) throw new Error('单题权重格式异常')
+      return { label: string(dimension.label), weight: dimension.weight, score: score(dimension.score) }
+    })
+    if (item.excludedReason != null && !['candidate_questions', 'administrative'].includes(String(item.excludedReason))) throw new Error('非计分题类型异常')
+    return { excludedReason: item.excludedReason == null ? null : string(item.excludedReason), dimensions: parsedDimensions, questionNumber: item.questionNumber, question: string(item.question), answer: string(item.answer), score: score(item.score), comment: string(item.comment), highlights: strings(item.highlights), improvements: strings(item.improvements) }
   })
   const result: InterviewReview = { resultId: string(value.resultId), type: string(value.type), company: string(value.company), position: string(value.position), status: value.status as ReviewStatus, canGenerate: value.canGenerate, message: string(value.message), questions, report: null }
   if (value.status === 'completed') {
@@ -26,7 +35,20 @@ export function parseInterviewReview(value: unknown): InterviewReview {
       if (!quote || !questions.find(question => question.questionNumber === item.questionNumber)?.answer.includes(quote)) throw new Error('复盘引用不属于原回答')
       return { questionNumber: item.questionNumber, quote, kind: item.kind as ReviewEvidence['kind'], feedback: string(item.feedback), practice: string(item.practice) }
     })
-    result.report = { overallScore: score(report.overallScore), overallLevel: string(report.overallLevel), summary: string(report.summary), strengths: strings(report.strengths), weaknesses: strings(report.weaknesses), rubricVersion: report.rubricVersion === null ? null : string(report.rubricVersion), evidence,
+    let scoring: ReviewScoring | null = null
+    if (report.scoring != null) {
+      const metadata = report.scoring
+      if (!record(metadata) || !Number.isInteger(metadata.scoredQuestions) || !Number.isInteger(metadata.answeredQuestions) || typeof metadata.scoredQuestions !== 'number' || typeof metadata.answeredQuestions !== 'number' || metadata.scoredQuestions < 0 || metadata.scoredQuestions > metadata.answeredQuestions || !Array.isArray(metadata.weights)) throw new Error('评分覆盖度格式异常')
+      const weights = metadata.weights.map(item => {
+        if (!record(item) || typeof item.weight !== 'number' || !Number.isFinite(item.weight) || item.weight <= 0 || item.weight > 100) throw new Error('评分权重格式异常')
+        const key = string(item.key)
+        if (!['relevance', 'correctness', 'depth', 'structure'].includes(key)) throw new Error('评分维度异常')
+        return { key, label: string(item.label), weight: item.weight }
+      })
+      if (weights.length !== 4 || new Set(weights.map(item => item.key)).size !== 4 || weights.reduce((sum, item) => sum + item.weight, 0) !== 100) throw new Error('评分权重不完整')
+      scoring = { scoredQuestions: metadata.scoredQuestions, answeredQuestions: metadata.answeredQuestions, weights }
+    }
+    result.report = { scoring, overallScore: score(report.overallScore), overallLevel: string(report.overallLevel), summary: string(report.summary), strengths: strings(report.strengths), weaknesses: strings(report.weaknesses), rubricVersion: report.rubricVersion === null ? null : string(report.rubricVersion), evidence,
       radarData: report.radarData.map(item => {
         if (!record(item) || score(item.score) === null) throw new Error('维度格式异常')
         return { dimension: string(item.dimension), score: item.score as number, description: typeof item.description === 'string' ? item.description : '' }

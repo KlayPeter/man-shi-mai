@@ -14,6 +14,9 @@ logs/
 next-env.d.ts
 test-results/
 playwright-report/
+.firecrawl/
+apps/server/data/
+/data/
 .DS_Store
 .env
 .env.*

@@ -18,7 +18,7 @@ import {
 import {
   AssessmentContext,
   AssessmentOutput,
-  validateAssessment,
+  scoreAssessment,
 } from '../schemas/assessment-output';
 import { LogAICall } from '../../common/decorators/log-ai-call.decorator';
 
@@ -544,9 +544,6 @@ export class InterviewAIService {
       },
       { signal },
     );
-    return validateAssessment(
-      result,
-      context.qaList.map((qa) => qa.answer),
-    );
+    return scoreAssessment(result, context);
   }
 }
